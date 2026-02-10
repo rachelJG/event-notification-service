@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/rachelJG/event-notification-service/internal/adapters/http/dto"
 	"github.com/rachelJG/event-notification-service/internal/core/usecases"
 )
@@ -37,5 +38,10 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 }
 
 func isIdempotencyKeyValid(key string) bool {
-	return strings.TrimSpace(key) != ""
+	trimmed := strings.TrimSpace(key)
+	if trimmed == "" {
+		return false
+	}
+	_, err := uuid.Parse(trimmed)
+	return err == nil
 }

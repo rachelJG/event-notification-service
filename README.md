@@ -122,6 +122,7 @@ The system is designed to be easily extensible, allowing new events and channels
 ```http
 POST /api/events
 Content-Type: application/json
+Idempotency-Key: <uuid>
 
 {
   "event_type": "UserRegistered",
@@ -131,6 +132,35 @@ Content-Type: application/json
     "name": "John Doe"
   }
 }
+```
+
+### Idempotency
+
+Clients must send an `Idempotency-Key` header (UUID). For the same `Idempotency-Key` + `event_type`, retries will return the same `id` without creating duplicate events.
+
+Recommendation:
+- Generate a new UUID per user action (new intent).
+- Reuse the same UUID for automatic retries of that intent.
+
+### Health Check
+
+```http
+GET /healthz
+```
+
+Example curl:
+
+```bash
+curl -sS http://localhost:8080/healthz
+```
+
+Example curl for submit:
+
+```bash
+curl -sS -X POST http://localhost:8080/api/events \\
+  -H 'Content-Type: application/json' \\
+  -H 'Idempotency-Key: 6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a' \\
+  -d '{"event_type":"UserRegistered","payload":{"user_id":"12345","email":"user@example.com","name":"John Doe"}}'
 ```
 
 ## Configuration
