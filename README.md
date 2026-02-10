@@ -11,14 +11,53 @@ A high-performance, scalable backend service built in Go for processing domain e
 - **Reliable**: Implements retry mechanisms and dead-letter queues
 - **Easy to Integrate**: Simple HTTP API for event submission
 
-## Getting Started
-
 ## Tech Stack
 
 - **Go** - Core programming language
 - **PostgreSQL** - Primary database
 - **Docker** - Containerization
 - **HTTP APIs** - RESTful interface for communication
+
+## API Style
+
+The service exposes a RESTful HTTP API for receiving domain events and managing notifications.
+
+REST was chosen for its simplicity, wide tooling support, and ease of integration with different producers. 
+Since the service primarily receives events and returns acknowledgements, REST provides sufficient expressiveness without adding unnecessary complexity.
+
+
+## Data Storage
+
+PostgreSQL is used as the primary data store to persist events, notifications, and delivery attempts.
+
+A relational database was chosen to ensure data consistency, support transactional workflows, and enable constraints required for idempotent processing.
+
+## Processing Model
+
+The API acknowledges event reception synchronously, while notification processing and delivery are handled asynchronously.
+
+This design avoids tight coupling between producers and notification delivery, improves resilience, and prevents external failures from impacting producers.
+
+Producer → POST /events → 202 Accepted
+                         ↓
+                    Persist Event
+                         ↓
+                    Async Worker
+                         ↓
+                 Channel Delivery
+
+
+## Scalability
+
+The system is designed to scale horizontally:
+
+- The API layer is stateless and can be replicated.
+- Asynchronous workers can be scaled independently based on load.
+- Idempotent processing ensures safe retries and duplicate event handling.
+
+
+## Getting Started
+
 
 ## Running Locally with Docker
 

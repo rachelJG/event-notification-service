@@ -1,0 +1,58 @@
+package usecases
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/rachelJG/event-notification-service/internal/core/domain"
+)
+
+type fakeRepo struct {
+	lastEvent domain.Event
+	err       error
+}
+
+func (r *fakeRepo) Create(ctx context.Context, event domain.Event) (string, error) {
+	r.lastEvent = event
+	if r.err != nil {
+		return "", r.err
+	}
+	return "evt-123", nil
+}
+
+func TestSubmitEventHandleSuccess(t *testing.T) {
+	repo := &fakeRepo{}
+	uc := SubmitEvent{Repo: repo}
+
+	id, err := uc.Handle(context.Background(), domain.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if id != "evt-123" {
+		t.Fatalf("expected id to match, got %s", id)
+	}
+	if repo.lastEvent.Type != domain.EventTypeUserRegistered {
+		t.Fatalf("expected event type to be stored")
+	}
+}
+
+func TestSubmitEventHandleValidationError(t *testing.T) {
+	repo := &fakeRepo{}
+	uc := SubmitEvent{Repo: repo}
+
+	_, err := uc.Handle(context.Background(), domain.EventTypeUserRegistered, []byte(`{"user_id":"","email":"a@b.com","name":"A"}`))
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+}
+
+func TestSubmitEventHandleRepoError(t *testing.T) {
+	repo := &fakeRepo{err: errors.New("db error")}
+	uc := SubmitEvent{Repo: repo}
+
+	_, err := uc.Handle(context.Background(), domain.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`))
+	if err == nil {
+		t.Fatalf("expected repo error")
+	}
+}
