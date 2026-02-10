@@ -28,7 +28,7 @@ func (r *fakeRepo) Create(ctx context.Context, event domain.Event) (string, erro
 func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
-	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}}
+	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
 	router := NewRouter(handler, zap.NewNop())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -49,7 +49,7 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
-	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}}
+	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
 	router := NewRouter(handler, zap.NewNop())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -71,7 +71,7 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 func TestSubmitEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
-	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}}
+	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
 	router := NewRouter(handler, zap.NewNop())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
