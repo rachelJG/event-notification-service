@@ -45,6 +45,28 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &fakeRepo{}
+	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}}
+	router := NewRouter(handler)
+
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "not-a-uuid")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+	if repo.called {
+		t.Fatalf("expected repo not to be called")
+	}
+}
+
 func TestSubmitEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
@@ -54,7 +76,7 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Idempotency-Key", "idem-1")
+	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -65,7 +87,7 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	if !repo.called {
 		t.Fatalf("expected repo to be called")
 	}
-	if repo.event.IdempotencyKey != "idem-1" {
+	if repo.event.IdempotencyKey != "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a" {
 		t.Fatalf("expected idempotency key to be passed to repo")
 	}
 
