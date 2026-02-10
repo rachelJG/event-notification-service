@@ -176,6 +176,7 @@ SMTP_PASSWORD=yourpassword
 API_PORT=8080
 LOG_LEVEL=info
 APP_ENV=development
+JWT_SECRET=supersecret
 ```
 
 ## Acknowledgments
