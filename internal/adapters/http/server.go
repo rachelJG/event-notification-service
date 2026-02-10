@@ -8,6 +8,7 @@ func NewRouter(handler Handler) *gin.Engine {
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
-	router.POST("/api/events", handler.SubmitEventHandler)
+	v1 := router.Group("/api/v1")
+	v1.POST("/events", handler.SubmitEventHandler)
 	return router
 }

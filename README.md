@@ -38,7 +38,7 @@ The API acknowledges event reception synchronously, while notification processin
 
 This design avoids tight coupling between producers and notification delivery, improves resilience, and prevents external failures from impacting producers.
 
-Producer → POST /events → 202 Accepted
+Producer → POST /api/v1/events → 202 Accepted
                          ↓
                     Persist Event
                          ↓
@@ -120,7 +120,7 @@ The system is designed to be easily extensible, allowing new events and channels
 ### Submit Event
 
 ```http
-POST /api/events
+POST /api/v1/events
 Content-Type: application/json
 Idempotency-Key: <uuid>
 
@@ -157,7 +157,7 @@ curl -sS http://localhost:8080/healthz
 Example curl for submit:
 
 ```bash
-curl -sS -X POST http://localhost:8080/api/events \\
+curl -sS -X POST http://localhost:8080/api/v1/events \\
   -H 'Content-Type: application/json' \\
   -H 'Idempotency-Key: 6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a' \\
   -d '{"event_type":"UserRegistered","payload":{"user_id":"12345","email":"user@example.com","name":"John Doe"}}'
