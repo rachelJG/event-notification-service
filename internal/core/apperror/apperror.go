@@ -1,0 +1,49 @@
+package apperror
+
+import "fmt"
+
+type Code string
+
+const (
+	CodeInvalidArgument Code = "invalid_argument"
+	CodeNotFound        Code = "not_found"
+	CodeConflict        Code = "conflict"
+	CodeInternal        Code = "internal"
+)
+
+type AppError struct {
+	Code    Code
+	Message string
+	Err     error
+}
+
+func (e *AppError) Error() string {
+	if e.Err == nil {
+		return e.Message
+	}
+	return fmt.Sprintf("%s: %v", e.Message, e.Err)
+}
+
+func (e *AppError) Unwrap() error {
+	return e.Err
+}
+
+func New(code Code, message string, err error) *AppError {
+	return &AppError{Code: code, Message: message, Err: err}
+}
+
+func InvalidArgument(message string, err error) *AppError {
+	return New(CodeInvalidArgument, message, err)
+}
+
+func NotFound(message string, err error) *AppError {
+	return New(CodeNotFound, message, err)
+}
+
+func Conflict(message string, err error) *AppError {
+	return New(CodeConflict, message, err)
+}
+
+func Internal(message string, err error) *AppError {
+	return New(CodeInternal, message, err)
+}

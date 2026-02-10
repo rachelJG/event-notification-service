@@ -2,10 +2,10 @@ package usecases
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
+	"github.com/rachelJG/event-notification-service/internal/core/apperror"
 	"github.com/rachelJG/event-notification-service/internal/core/domain"
 	"github.com/rachelJG/event-notification-service/internal/ports"
 )
@@ -16,10 +16,10 @@ type SubmitEvent struct {
 
 func (uc SubmitEvent) Handle(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
 	if strings.TrimSpace(idempotencyKey) == "" {
-		return "", errors.New("idempotency_key is required")
+		return "", apperror.InvalidArgument("idempotency_key is required", nil)
 	}
 	if err := domain.ValidateEvent(eventType, payload); err != nil {
-		return "", err
+		return "", apperror.InvalidArgument("invalid event", err)
 	}
 
 	event := domain.Event{
@@ -29,5 +29,9 @@ func (uc SubmitEvent) Handle(ctx context.Context, eventType string, payload []by
 		OccurredAt:     time.Now().UTC(),
 	}
 
-	return uc.Repo.Create(ctx, event)
+	id, err := uc.Repo.Create(ctx, event)
+	if err != nil {
+		return "", apperror.Internal("failed to persist event", err)
+	}
+	return id, nil
 }

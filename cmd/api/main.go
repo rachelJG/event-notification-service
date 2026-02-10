@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,22 +9,29 @@ import (
 	"time"
 
 	"github.com/rachelJG/event-notification-service/internal/app"
+	"github.com/rachelJG/event-notification-service/internal/adapters/logger"
 	"github.com/rachelJG/event-notification-service/internal/config"
+	"go.uber.org/zap"
 )
 
 func main() {
 	cfg := config.Load()
 	ctx := context.Background()
 
-	application, err := app.New(ctx, cfg)
+	log, err := logger.New(cfg.AppEnv, cfg.LogLevel)
 	if err != nil {
-		log.Fatalf("init app: %v", err)
+		zap.S().Fatalf("init logger: %v", err)
+	}
+
+	application, err := app.New(ctx, cfg, log)
+	if err != nil {
+		log.Fatal("init app", zap.Error(err))
 	}
 
 	go func() {
-		log.Printf("api listening on %s", cfg.APIAddr)
+		application.Logger.Info("api listening", zap.String("addr", cfg.APIAddr))
 		if err := application.Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			application.Logger.Fatal("server error", zap.Error(err))
 		}
 	}()
 
@@ -41,6 +47,6 @@ func waitForShutdown(application *app.App) {
 	defer cancel()
 
 	if err := application.Shutdown(ctx); err != nil {
-		log.Printf("shutdown error: %v", err)
+		application.Logger.Error("shutdown error", zap.Error(err))
 	}
 }
