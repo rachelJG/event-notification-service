@@ -31,10 +31,12 @@ func TestPostgresEventRepositoryCreate(t *testing.T) {
 		CREATE TABLE IF NOT EXISTS events (
 			id UUID PRIMARY KEY,
 			type TEXT NOT NULL,
+			idempotency_key TEXT NOT NULL,
 			payload JSONB NOT NULL,
 			occurred_at TIMESTAMPTZ NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
+		CREATE UNIQUE INDEX IF NOT EXISTS ux_events_idempotency_type ON events (idempotency_key, type);
 	`)
 	if err != nil {
 		t.Fatalf("ensure events table: %v", err)
@@ -53,15 +55,29 @@ func TestPostgresEventRepositoryCreate(t *testing.T) {
 	})
 
 	id, err := repo.Create(ctx, domain.Event{
-		Type:       domain.EventTypeUserRegistered,
-		Payload:    payload,
-		OccurredAt: time.Now().UTC(),
+		Type:           domain.EventTypeUserRegistered,
+		IdempotencyKey: "idem-1",
+		Payload:        payload,
+		OccurredAt:     time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
 	if id == "" {
 		t.Fatalf("expected id to be generated")
+	}
+
+	id2, err := repo.Create(ctx, domain.Event{
+		Type:           domain.EventTypeUserRegistered,
+		IdempotencyKey: "idem-1",
+		Payload:        payload,
+		OccurredAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("create event with same idempotency key: %v", err)
+	}
+	if id2 != id {
+		t.Fatalf("expected idempotent insert to return same id, got %s", id2)
 	}
 
 	var count int

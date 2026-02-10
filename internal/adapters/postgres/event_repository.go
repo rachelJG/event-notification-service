@@ -19,10 +19,13 @@ func (r EventRepository) Create(ctx context.Context, event domain.Event) (string
 		id = uuid.NewString()
 	}
 
-	_, err := r.Pool.Exec(ctx, `
-		INSERT INTO events (id, type, payload, occurred_at, created_at)
-		VALUES ($1, $2, $3, $4, $5)
-	`, id, event.Type, event.Payload, event.OccurredAt, time.Now().UTC())
+	err := r.Pool.QueryRow(ctx, `
+		INSERT INTO events (id, type, idempotency_key, payload, occurred_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (idempotency_key, type)
+		DO UPDATE SET id = events.id
+		RETURNING id
+	`, id, event.Type, event.IdempotencyKey, event.Payload, event.OccurredAt, time.Now().UTC()).Scan(&id)
 	if err != nil {
 		return "", err
 	}

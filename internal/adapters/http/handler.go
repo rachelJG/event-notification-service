@@ -1,10 +1,11 @@
 package httpadapter
 
 import (
-	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rachelJG/event-notification-service/internal/adapters/http/dto"
 	"github.com/rachelJG/event-notification-service/internal/core/usecases"
 )
 
@@ -12,27 +13,29 @@ type Handler struct {
 	SubmitEvent usecases.SubmitEvent
 }
 
-type submitEventRequest struct {
-	EventType string          `json:"event_type"`
-	Payload   json.RawMessage `json:"payload"`
-}
-
-type submitEventResponse struct {
-	ID string `json:"id"`
-}
+const idempotencyHeader = "Idempotency-Key"
 
 func (h Handler) SubmitEventHandler(c *gin.Context) {
-	var req submitEventRequest
+	if !isIdempotencyKeyValid(c.GetHeader(idempotencyHeader)) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing or invalid Idempotency-Key"})
+		return
+	}
+
+	var req dto.SubmitEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
 
-	id, err := h.SubmitEvent.Handle(c.Request.Context(), req.EventType, req.Payload)
+	id, err := h.SubmitEvent.Handle(c.Request.Context(), req.EventType, req.Payload, c.GetHeader(idempotencyHeader))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusAccepted, submitEventResponse{ID: id})
+	c.JSON(http.StatusAccepted, dto.SubmitEventResponse{ID: id})
+}
+
+func isIdempotencyKeyValid(key string) bool {
+	return strings.TrimSpace(key) != ""
 }
