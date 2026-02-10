@@ -31,7 +31,7 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	router := NewRouter(handler)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
-	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewBufferString(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 
@@ -52,7 +52,7 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	router := NewRouter(handler)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
-	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewBufferString(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "not-a-uuid")
 	resp := httptest.NewRecorder()
@@ -74,7 +74,7 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	router := NewRouter(handler)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
-	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewBufferString(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
 	resp := httptest.NewRecorder()
