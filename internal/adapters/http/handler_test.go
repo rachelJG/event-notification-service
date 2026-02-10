@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rachelJG/event-notification-service/internal/core/domain"
 	"github.com/rachelJG/event-notification-service/internal/core/usecases"
+	"go.uber.org/zap"
 )
 
 type fakeRepo struct {
@@ -28,7 +29,7 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}}
-	router := NewRouter(handler)
+	router := NewRouter(handler, zap.NewNop())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -49,7 +50,7 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}}
-	router := NewRouter(handler)
+	router := NewRouter(handler, zap.NewNop())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -71,7 +72,7 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}}
-	router := NewRouter(handler)
+	router := NewRouter(handler, zap.NewNop())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))

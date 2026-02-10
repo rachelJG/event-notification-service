@@ -174,6 +174,8 @@ SMTP_PORT=587
 SMTP_USER=user@example.com
 SMTP_PASSWORD=yourpassword
 API_PORT=8080
+LOG_LEVEL=info
+APP_ENV=development
 ```
 
 ## Acknowledgments

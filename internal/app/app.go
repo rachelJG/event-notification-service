@@ -10,14 +10,16 @@ import (
 	"github.com/rachelJG/event-notification-service/internal/adapters/postgres"
 	"github.com/rachelJG/event-notification-service/internal/config"
 	"github.com/rachelJG/event-notification-service/internal/core/usecases"
+	"go.uber.org/zap"
 )
 
 type App struct {
 	Server *http.Server
 	DB     *pgxpool.Pool
+	Logger *zap.Logger
 }
 
-func New(ctx context.Context, cfg config.Config) (*App, error) {
+func New(ctx context.Context, cfg config.Config, log *zap.Logger) (*App, error) {
 	pool, err := pgxpool.New(ctx, cfg.PGDSN)
 	if err != nil {
 		return nil, err
@@ -27,13 +29,13 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	uc := usecases.SubmitEvent{Repo: repo}
 	handler := httpadapter.Handler{SubmitEvent: uc}
 
-	router := httpadapter.NewRouter(handler)
+	router := httpadapter.NewRouter(handler, log)
 	server := &http.Server{
 		Addr:    cfg.APIAddr,
 		Handler: router,
 	}
 
-	return &App{Server: server, DB: pool}, nil
+	return &App{Server: server, DB: pool, Logger: log}, nil
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
@@ -42,5 +44,6 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 	err := a.Server.Shutdown(ctx)
 	a.DB.Close()
+	_ = a.Logger.Sync()
 	return err
 }
