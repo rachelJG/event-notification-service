@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Hexagonal structure wiring (`core`, `ports`, `adapters`, `app`).
 - Postgres repository for events and SQL migration.
 - HTTP handler tests for idempotency validation.
+- JWT authentication middleware for `/api/v1/events`.
 - Unit tests for domain validation and use case.
 - Integration test for Postgres repository (tagged `integration`).
 - Lint configuration via `golangci-lint` and Makefile targets.
@@ -19,3 +20,4 @@ All notable changes to this project will be documented in this file.
 - HTTP server implementation switched to Gin.
 - Enforced UUID format validation for `Idempotency-Key`.
 - Documented idempotency behavior and curl examples.
+- Added `JWT_SECRET` config for API auth.

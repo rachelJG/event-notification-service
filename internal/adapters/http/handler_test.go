@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/rachelJG/event-notification-service/internal/core/domain"
 	"github.com/rachelJG/event-notification-service/internal/core/usecases"
 	"go.uber.org/zap"
@@ -29,11 +31,12 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
-	router := NewRouter(handler, zap.NewNop())
+	router := NewRouter(handler, zap.NewNop(), "test-secret")
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -50,12 +53,13 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
-	router := NewRouter(handler, zap.NewNop())
+	router := NewRouter(handler, zap.NewNop(), "test-secret")
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "not-a-uuid")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -72,12 +76,13 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
-	router := NewRouter(handler, zap.NewNop())
+	router := NewRouter(handler, zap.NewNop(), "test-secret")
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -99,4 +104,18 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	if body["id"] != "evt-1" {
 		t.Fatalf("expected id to be evt-1, got %s", body["id"])
 	}
+}
+
+func testJWT(t *testing.T, secret string) string {
+	t.Helper()
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": "test-user",
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	})
+	signed, err := token.SignedString([]byte(secret))
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	return signed
 }

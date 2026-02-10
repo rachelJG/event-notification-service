@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rachelJG/event-notification-service/internal/app"
 	"github.com/rachelJG/event-notification-service/internal/adapters/logger"
+	"github.com/rachelJG/event-notification-service/internal/app"
 	"github.com/rachelJG/event-notification-service/internal/config"
 	"go.uber.org/zap"
 )
