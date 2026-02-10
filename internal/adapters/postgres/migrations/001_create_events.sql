@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS events (
+  id UUID PRIMARY KEY,
+  type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  occurred_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_type ON events (type);

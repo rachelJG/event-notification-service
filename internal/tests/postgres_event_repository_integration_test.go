@@ -1,0 +1,74 @@
+//go:build integration
+
+package tests
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rachelJG/event-notification-service/internal/adapters/postgres"
+	"github.com/rachelJG/event-notification-service/internal/core/domain"
+)
+
+func TestPostgresEventRepositoryCreate(t *testing.T) {
+	dsn := os.Getenv("PG_DSN")
+	if dsn == "" {
+		t.Skip("PG_DSN not set")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect postgres: %v", err)
+	}
+	defer pool.Close()
+
+	_, err = pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS events (
+			id UUID PRIMARY KEY,
+			type TEXT NOT NULL,
+			payload JSONB NOT NULL,
+			occurred_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+	`)
+	if err != nil {
+		t.Fatalf("ensure events table: %v", err)
+	}
+
+	_, err = pool.Exec(ctx, `TRUNCATE TABLE events`)
+	if err != nil {
+		t.Fatalf("truncate events: %v", err)
+	}
+
+	repo := postgres.EventRepository{Pool: pool}
+	payload, _ := json.Marshal(domain.UserRegisteredPayload{
+		UserID: "1",
+		Email:  "test@example.com",
+		Name:   "Test User",
+	})
+
+	id, err := repo.Create(ctx, domain.Event{
+		Type:       domain.EventTypeUserRegistered,
+		Payload:    payload,
+		OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	if id == "" {
+		t.Fatalf("expected id to be generated")
+	}
+
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM events`).Scan(&count); err != nil {
+		t.Fatalf("count events: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 event, got %d", count)
+	}
+}
