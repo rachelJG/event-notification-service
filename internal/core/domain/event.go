@@ -10,11 +10,12 @@ import (
 const EventTypeUserRegistered = "UserRegistered"
 
 type Event struct {
-	ID         string
-	Type       string
-	Payload    json.RawMessage
-	OccurredAt time.Time
-	CreatedAt  time.Time
+	ID              string
+	Type            string
+	IdempotencyKey  string
+	Payload         json.RawMessage
+	OccurredAt      time.Time
+	CreatedAt       time.Time
 }
 
 type UserRegisteredPayload struct {
