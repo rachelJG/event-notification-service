@@ -5,10 +5,13 @@ import "fmt"
 type Code string
 
 const (
-	CodeInvalidArgument Code = "invalid_argument"
-	CodeNotFound        Code = "not_found"
-	CodeConflict        Code = "conflict"
-	CodeInternal        Code = "internal"
+	CodeInvalidArgument  Code = "invalid_argument"
+	CodeUnauthenticated  Code = "unauthenticated"
+	CodePermissionDenied Code = "permission_denied"
+	CodeNotFound         Code = "not_found"
+	CodeConflict         Code = "conflict"
+	CodeTimeout          Code = "timeout"
+	CodeInternal         Code = "internal"
 )
 
 type AppError struct {
@@ -36,12 +39,24 @@ func InvalidArgument(message string, err error) *AppError {
 	return New(CodeInvalidArgument, message, err)
 }
 
+func Unauthenticated(message string, err error) *AppError {
+	return New(CodeUnauthenticated, message, err)
+}
+
+func PermissionDenied(message string, err error) *AppError {
+	return New(CodePermissionDenied, message, err)
+}
+
 func NotFound(message string, err error) *AppError {
 	return New(CodeNotFound, message, err)
 }
 
 func Conflict(message string, err error) *AppError {
 	return New(CodeConflict, message, err)
+}
+
+func Timeout(message string, err error) *AppError {
+	return New(CodeTimeout, message, err)
 }
 
 func Internal(message string, err error) *AppError {
