@@ -85,6 +85,21 @@ The system is designed to scale horizontally:
 
 4. The service should now be running at `http://localhost:8080`
 
+### Environment Variables
+
+- `API_ADDR` (default `:8080`)
+- `PG_DSN` (default `postgres://postgres:postgres@localhost:5432/events?sslmode=disable`)
+- `LOG_LEVEL` (default `info`)
+- `APP_ENV` (default `development`)
+- `JWT_SECRET` (required for auth)
+- `MAX_BODY_BYTES` (default `1048576`)
+- `RATE_LIMIT_RPS` (default `10`)
+- `RATE_LIMIT_BURST` (default `20`)
+- `READ_HEADER_TIMEOUT` (seconds, default `5`)
+- `READ_TIMEOUT` (seconds, default `15`)
+- `WRITE_TIMEOUT` (seconds, default `15`)
+- `IDLE_TIMEOUT` (seconds, default `60`)
+
 ### Development
 
 For development, you can run the application directly with Go:
@@ -145,13 +160,13 @@ Recommendation:
 ### Health Check
 
 ```http
-GET /healthz
+GET /health
 ```
 
 Example curl:
 
 ```bash
-curl -sS http://localhost:8080/healthz
+curl -sS http://localhost:8080/health
 ```
 
 Example curl for submit:

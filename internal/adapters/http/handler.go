@@ -61,6 +61,16 @@ func (h Handler) logError(c *gin.Context, err error) {
 		zap.String("path", c.FullPath()),
 		zap.Int("status", httpErr.Status),
 		zap.String("code", httpErr.Code),
+		zap.String("request_id", requestIDFromContext(c)),
 		zap.Error(err),
 	)
+}
+
+func requestIDFromContext(c *gin.Context) string {
+	if v, ok := c.Get("request_id"); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }

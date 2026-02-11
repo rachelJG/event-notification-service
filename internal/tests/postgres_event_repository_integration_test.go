@@ -17,7 +17,7 @@ import (
 func TestPostgresEventRepositoryCreate(t *testing.T) {
 	dsn := os.Getenv("PG_DSN")
 	if dsn == "" {
-		t.Skip("PG_DSN not set")
+		dsn = "postgres://postgres:postgres@localhost:5432/events?sslmode=disable"
 	}
 
 	ctx := context.Background()

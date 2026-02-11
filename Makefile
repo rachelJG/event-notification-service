@@ -22,4 +22,4 @@ test-integration:
 	GOCACHE=$(GOCACHE) \
 	GOMODCACHE=$(GOMODCACHE) \
 	GOPATH=$(GOPATH) \
-	go test -tags=integration ./...
+	bash -c 'set -a; [ -f .env ] && . .env; set +a; go test -tags=integration ./...'
