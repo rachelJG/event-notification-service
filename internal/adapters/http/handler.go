@@ -30,6 +30,8 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
+	c.Set("event_type", req.EventType)
+	c.Set("idempotency_key", c.GetHeader(idempotencyHeader))
 
 	id, err := h.SubmitEvent.Handle(c.Request.Context(), req.EventType, req.Payload, c.GetHeader(idempotencyHeader))
 	if err != nil {
@@ -62,12 +64,32 @@ func (h Handler) logError(c *gin.Context, err error) {
 		zap.Int("status", httpErr.Status),
 		zap.String("code", httpErr.Code),
 		zap.String("request_id", requestIDFromContext(c)),
+		zap.String("event_type", eventTypeFromContext(c)),
+		zap.String("idempotency_key", idempotencyKeyFromContext(c)),
 		zap.Error(err),
 	)
 }
 
 func requestIDFromContext(c *gin.Context) string {
 	if v, ok := c.Get("request_id"); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func eventTypeFromContext(c *gin.Context) string {
+	if v, ok := c.Get("event_type"); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func idempotencyKeyFromContext(c *gin.Context) string {
+	if v, ok := c.Get("idempotency_key"); ok {
 		if s, ok := v.(string); ok {
 			return s
 		}

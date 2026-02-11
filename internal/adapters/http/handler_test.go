@@ -107,6 +107,28 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	}
 }
 
+func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &fakeRepo{}
+	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
+	router := NewRouter(handler, zap.NewNop(), testConfig())
+
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.Code)
+	}
+	if repo.called {
+		t.Fatalf("expected repo not to be called")
+	}
+}
+
 func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}

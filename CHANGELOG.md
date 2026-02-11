@@ -23,6 +23,9 @@ All notable changes to this project will be documented in this file.
 - HTTP tests for Content-Type enforcement and rate limiting.
 - `gosec` enabled via `golangci-lint`.
 - Migration runner and `make migrate` target for local development.
+- Error mapping for request timeouts and richer error logging context (event_type, idempotency_key).
+- Added error codes for unauthenticated, permission_denied, and timeout with HTTP mapping.
+- JWT middleware now uses the standard error codes; added errmap unit tests.
 
 ### Changed
 - HTTP server implementation switched to Gin.
