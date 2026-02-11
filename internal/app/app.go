@@ -29,10 +29,14 @@ func New(ctx context.Context, cfg config.Config, log *zap.Logger) (*App, error) 
 	uc := usecases.SubmitEvent{Repo: repo}
 	handler := httpadapter.Handler{SubmitEvent: uc, Logger: log}
 
-	router := httpadapter.NewRouter(handler, log, cfg.JWTSecret)
+	router := httpadapter.NewRouter(handler, log, cfg)
 	server := &http.Server{
-		Addr:    cfg.APIAddr,
-		Handler: router,
+		Addr:              cfg.APIAddr,
+		Handler:           router,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
 	}
 
 	return &App{Server: server, DB: pool, Logger: log}, nil

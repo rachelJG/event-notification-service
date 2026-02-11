@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.5.5
 	go.uber.org/zap v1.27.1
+	golang.org/x/time v0.12.0
 )
 
 require (
