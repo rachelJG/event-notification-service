@@ -1,4 +1,4 @@
-.PHONY: lint test test-integration
+.PHONY: lint test test-integration migrate
 
 GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint
 GOCACHE ?= /tmp/go-build
@@ -23,3 +23,9 @@ test-integration:
 	GOMODCACHE=$(GOMODCACHE) \
 	GOPATH=$(GOPATH) \
 	bash -c 'set -a; [ -f .env ] && . .env; set +a; go test -tags=integration ./...'
+
+migrate:
+	GOCACHE=$(GOCACHE) \
+	GOMODCACHE=$(GOMODCACHE) \
+	GOPATH=$(GOPATH) \
+	bash -c 'set -a; [ -f .env ] && . .env; set +a; go run ./cmd/migrate'

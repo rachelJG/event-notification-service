@@ -112,6 +112,14 @@ go mod download
 go run main.go
 ```
 
+### Migrations
+
+Apply database migrations using the built-in runner:
+
+```bash
+make migrate
+```
+
 ## Supported Events
 
 The service currently supports the following domain events:

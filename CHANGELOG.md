@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 - Additional event payload validations for PasswordResetRequested, OrderPaid, and OrderShipped.
 - HTTP tests for Content-Type enforcement and rate limiting.
 - `gosec` enabled via `golangci-lint`.
+- Migration runner and `make migrate` target for local development.
 
 ### Changed
 - HTTP server implementation switched to Gin.
