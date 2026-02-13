@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - API_ADDR=:8080
+      - PG_DSN=postgres://postgres:postgres@postgres:5432/events?sslmode=disable
+      - LOG_LEVEL=info
+      - APP_ENV=development
+      - JWT_SECRET=supersecret_dev_key
+      - MAX_BODY_BYTES=1048576
+      - RATE_LIMIT_RPS=10
+      - RATE_LIMIT_BURST=20
+      - READ_HEADER_TIMEOUT=5
+      - READ_TIMEOUT=15
+      - WRITE_TIMEOUT=15
+      - IDLE_TIMEOUT=60
+      - CORS_ALLOW_ALL=true
+      - CORS_ALLOWED_ORIGINS=
+      - CORS_ALLOWED_HEADERS=Origin,Content-Length,Content-Type,Idempotency-Key,Authorization
+      - HSTS_ENABLED=false
+      - HSTS_MAX_AGE_SECONDS=31536000
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=events
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

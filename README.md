@@ -99,6 +99,11 @@ The system is designed to scale horizontally:
 - `READ_TIMEOUT` (seconds, default `15`)
 - `WRITE_TIMEOUT` (seconds, default `15`)
 - `IDLE_TIMEOUT` (seconds, default `60`)
+- `CORS_ALLOW_ALL` (default `true` in non-production, `false` in production)
+- `CORS_ALLOWED_ORIGINS` (comma-separated list, used when `CORS_ALLOW_ALL=false`)
+- `CORS_ALLOWED_HEADERS` (comma-separated list, default `Origin,Content-Length,Content-Type,Idempotency-Key,Authorization`)
+- `HSTS_ENABLED` (default `true` in production, `false` otherwise; only sent on HTTPS)
+- `HSTS_MAX_AGE_SECONDS` (default `31536000`)
 
 ### Development
 
@@ -109,7 +114,7 @@ For development, you can run the application directly with Go:
 go mod download
 
 # Run the application
-go run main.go
+go run ./cmd/api
 ```
 
 ### Migrations
@@ -119,6 +124,17 @@ Apply database migrations using the built-in runner:
 ```bash
 make migrate
 ```
+
+For CI/CD, run migrations before deployment:
+
+```bash
+bash ./scripts/run-migrations.sh
+```
+
+This repository includes a GitHub Actions workflow at `.github/workflows/deploy.yml` with a migration gate:
+- `migrate` job runs first (requires `PG_DSN` in repository secrets).
+- `deploy` job runs only if migrations succeed.
+- Replace the deploy placeholder step with your real deployment command.
 
 ## Supported Events
 
@@ -168,12 +184,16 @@ Recommendation:
 ### Health Check
 
 ```http
+GET /live
+GET /ready
 GET /health
 ```
 
-Example curl:
+Examples:
 
 ```bash
+curl -sS http://localhost:8080/live
+curl -sS http://localhost:8080/ready
 curl -sS http://localhost:8080/health
 ```
 
@@ -191,15 +211,23 @@ curl -sS -X POST http://localhost:8080/api/v1/events \\
 Configuration is done through environment variables:
 
 ```env
-REDIS_ADDR=localhost:6379
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=user@example.com
-SMTP_PASSWORD=yourpassword
-API_PORT=8080
+API_ADDR=:8080
+PG_DSN=postgres://postgres:postgres@localhost:5432/events?sslmode=disable
 LOG_LEVEL=info
 APP_ENV=development
 JWT_SECRET=supersecret
+MAX_BODY_BYTES=1048576
+RATE_LIMIT_RPS=10
+RATE_LIMIT_BURST=20
+READ_HEADER_TIMEOUT=5
+READ_TIMEOUT=15
+WRITE_TIMEOUT=15
+IDLE_TIMEOUT=60
+CORS_ALLOW_ALL=true
+CORS_ALLOWED_ORIGINS=
+CORS_ALLOWED_HEADERS=Origin,Content-Length,Content-Type,Idempotency-Key,Authorization
+HSTS_ENABLED=false
+HSTS_MAX_AGE_SECONDS=31536000
 ```
 
 ## Acknowledgments

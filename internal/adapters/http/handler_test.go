@@ -32,7 +32,7 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
-	router := NewRouter(handler, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -54,7 +54,7 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
-	router := NewRouter(handler, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -77,7 +77,7 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
-	router := NewRouter(handler, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -111,7 +111,7 @@ func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
-	router := NewRouter(handler, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -133,7 +133,7 @@ func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &fakeRepo{}
 	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
-	router := NewRouter(handler, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -159,7 +159,7 @@ func TestSubmitEventRateLimit(t *testing.T) {
 	cfg := testConfig()
 	cfg.RateLimitRPS = 1
 	cfg.RateLimitBurst = 1
-	router := NewRouter(handler, zap.NewNop(), cfg)
+	router := NewRouter(handler, nil, zap.NewNop(), cfg)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -203,13 +203,15 @@ func testJWT(t *testing.T, secret string) string {
 
 func testConfig() config.Config {
 	return config.Config{
-		JWTSecret:         "test-secret",
-		MaxBodyBytes:      1 << 20,
-		RateLimitRPS:      1000,
-		RateLimitBurst:    1000,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		ReadHeaderTimeout: 5 * time.Second,
+		JWTSecret:           "test-secret",
+		MaxBodyBytes:        1 << 20,
+		RateLimitRPS:        1000,
+		RateLimitBurst:      1000,
+		ReadTimeout:         15 * time.Second,
+		WriteTimeout:        15 * time.Second,
+		IdleTimeout:         60 * time.Second,
+		ReadHeaderTimeout:   5 * time.Second,
+		CORSAllowAllOrigins: true,
+		CORSAllowedHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Idempotency-Key", "Authorization"},
 	}
 }
