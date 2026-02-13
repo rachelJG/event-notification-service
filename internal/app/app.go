@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rachelJG/event-notification-service/internal/adapters/http"
+	httpadapter "github.com/rachelJG/event-notification-service/internal/adapters/http"
 	"github.com/rachelJG/event-notification-service/internal/adapters/postgres"
 	"github.com/rachelJG/event-notification-service/internal/config"
 	"github.com/rachelJG/event-notification-service/internal/core/usecases"
@@ -29,7 +29,7 @@ func New(ctx context.Context, cfg config.Config, log *zap.Logger) (*App, error) 
 	uc := usecases.SubmitEvent{Repo: repo}
 	handler := httpadapter.Handler{SubmitEvent: uc, Logger: log}
 
-	router := httpadapter.NewRouter(handler, log, cfg)
+	router := httpadapter.NewRouter(handler, pool, log, cfg)
 	server := &http.Server{
 		Addr:              cfg.APIAddr,
 		Handler:           router,

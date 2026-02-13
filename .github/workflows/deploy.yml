@@ -1,0 +1,43 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Migrate database
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: production
+      PG_DSN: ${{ secrets.PG_DSN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Validate required secrets
+        run: |
+          test -n "${PG_DSN}" || (echo "Missing PG_DSN secret" && exit 1)
+
+      - name: Run migrations
+        run: bash ./scripts/run-migrations.sh
+
+  deploy:
+    name: Deploy application
+    runs-on: ubuntu-latest
+    needs: migrate
+    steps:
+      - name: Deploy placeholder
+        run: |
+          echo "Migrations succeeded."
+          echo "Replace this step with your real deploy command (kubectl/helm/terraform/etc)."
