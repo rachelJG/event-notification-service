@@ -9,11 +9,53 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rachelJG/event-notification-service/internal/application"
-	"github.com/rachelJG/event-notification-service/internal/infrastructure/config"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rachelJG/event-notification-service/internal/application/usecases"
+	"github.com/rachelJG/event-notification-service/internal/config"
+	httpadapter "github.com/rachelJG/event-notification-service/internal/infrastructure/http"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/logger"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/postgres"
 	"go.uber.org/zap"
 )
+
+type app struct {
+	server *http.Server
+	db     *pgxpool.Pool
+	logger *zap.Logger
+}
+
+func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, error) {
+	pool, err := pgxpool.New(ctx, cfg.PGDSN)
+	if err != nil {
+		return nil, err
+	}
+
+	repo := postgres.EventRepository{Pool: pool}
+	uc := &usecases.SubmitEvent{Repo: repo}
+	handler := httpadapter.Handler{SubmitEvent: uc, Logger: log}
+
+	router := httpadapter.NewRouter(handler, pool, log, cfg)
+	server := &http.Server{
+		Addr:              cfg.APIAddr,
+		Handler:           router,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+	}
+
+	return &app{server: server, db: pool, logger: log}, nil
+}
+
+func (a *app) shutdown(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	err := a.server.Shutdown(ctx)
+	a.db.Close()
+	_ = a.logger.Sync()
+	return err
+}
 
 func main() {
 	cfg := config.Load()
@@ -28,22 +70,22 @@ func main() {
 		zap.S().Fatalf("init logger: %v", err)
 	}
 
-	app, err := application.New(ctx, cfg, log)
+	application, err := newApp(ctx, cfg, log)
 	if err != nil {
 		log.Fatal("init app", zap.Error(err))
 	}
 
 	go func() {
-		app.Logger.Info("api listening", zap.String("addr", cfg.APIAddr))
-		if err := app.Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			app.Logger.Fatal("server error", zap.Error(err))
+		application.logger.Info("api listening", zap.String("addr", cfg.APIAddr))
+		if err := application.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			application.logger.Fatal("server error", zap.Error(err))
 		}
 	}()
 
-	waitForShutdown(app)
+	waitForShutdown(application)
 }
 
-func waitForShutdown(app *application.App) {
+func waitForShutdown(application *app) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
@@ -51,7 +93,7 @@ func waitForShutdown(app *application.App) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := app.Shutdown(ctx); err != nil {
-		app.Logger.Error("shutdown error", zap.Error(err))
+	if err := application.shutdown(ctx); err != nil {
+		application.logger.Error("shutdown error", zap.Error(err))
 	}
 }
