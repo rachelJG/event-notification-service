@@ -56,6 +56,61 @@ The system is designed to scale horizontally:
 - Idempotent processing ensures safe retries and duplicate event handling.
 
 
+## Hexagonal Architecture
+
+The project follows a Hexagonal Architecture (Ports & Adapters) organized in three layers: **Domain**, **Application**, and **Infrastructure**. The domain layer has zero external dependencies.
+
+```
+                         ┌─────────────────────────────────────────┐
+                         │              cmd/api/main.go            │
+                         │           (Composition Root)            │
+                         └────────────────┬────────────────────────┘
+                                          │ wires
+                  ┌───────────────────────┼───────────────────────┐
+                  │                       │                       │
+                  ▼                       ▼                       ▼
+   ┌──────────────────────┐ ┌──────────────────────┐ ┌────────────────────┐
+   │   Infrastructure     │ │     Application      │ │      Domain        │
+   │                      │ │                      │ │                    │
+   │  http/               │ │  usecases/           │ │  entities/         │
+   │   ├─ handler.go      │ │   └─ submit_event    │ │   └─ event.go     │
+   │   ├─ server.go       │ │      _impl.go        │ │                    │
+   │   ├─ dto/            │ │                      │ │  ports/            │
+   │   ├─ errmap/         │ │                      │ │   └─ event_        │
+   │   └─ middleware/     │ │                      │ │      repository.go │
+   │                      │ │                      │ │                    │
+   │  postgres/           │ │                      │ │  errors/           │
+   │   └─ event_          │ │                      │ │   └─ apperror.go  │
+   │      repository      │ │                      │ │                    │
+   │      _impl.go        │ │                      │ │                    │
+   │                      │ │                      │ │                    │
+   │  logger/             │ │                      │ │                    │
+   │   └─ zap.go          │ │                      │ │                    │
+   └──────────┬───────────┘ └──────────┬───────────┘ └────────────────────┘
+              │                        │                       ▲
+              │         implements     │        depends on     │
+              └────────────────────────┴───────────────────────┘
+                              ports (interfaces)
+```
+
+**Dependency rule:** Dependencies always point inward. Infrastructure and Application depend on Domain (ports), but Domain never imports from outer layers.
+
+```
+internal/
+├── config/                        # Shared configuration (layer-independent)
+├── domain/
+│   ├── entities/                  # Event, payload types, validation
+│   ├── ports/                     # EventRepository, SubmitEventUseCase interfaces
+│   └── errors/                    # Typed error taxonomy (AppError)
+├── application/
+│   └── usecases/                  # Business logic (SubmitEvent)
+├── infrastructure/
+│   ├── http/                      # Gin router, handler, DTOs, middleware, errmap
+│   ├── postgres/                  # EventRepository implementation
+│   └── logger/                    # Zap logger factory
+└── tests/                         # Integration tests
+```
+
 ## Getting Started
 
 
@@ -156,53 +211,22 @@ The system is designed to be easily extensible, allowing new events and channels
 
 ## API Documentation
 
-### Submit Event
+The API contract is documented in API Blueprint:
 
-```http
-POST /api/v1/events
-Content-Type: application/json
-Idempotency-Key: <uuid>
+- `docs/api.apib`
 
-{
-  "event_type": "UserRegistered",
-  "payload": {
-    "user_id": "12345",
-    "email": "user@example.com",
-    "name": "John Doe"
-  }
-}
-```
+Render options:
 
-### Idempotency
-
-Clients must send an `Idempotency-Key` header (UUID). For the same `Idempotency-Key` + `event_type`, retries will return the same `id` without creating duplicate events.
-
-Recommendation:
-- Generate a new UUID per user action (new intent).
-- Reuse the same UUID for automatic retries of that intent.
-
-### Health Check
-
-```http
-GET /live
-GET /ready
-GET /health
-```
-
-Examples:
-
-```bash
-curl -sS http://localhost:8080/live
-curl -sS http://localhost:8080/ready
-curl -sS http://localhost:8080/health
-```
+- Aglio: `npx aglio -i docs/api.apib -s`
+- Drafter validation: `drafter -l docs/api.apib`
 
 Example curl for submit:
 
 ```bash
-curl -sS -X POST http://localhost:8080/api/v1/events \\
-  -H 'Content-Type: application/json' \\
-  -H 'Idempotency-Key: 6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a' \\
+curl -sS -X POST http://localhost:8080/api/v1/events \
+  -H 'Authorization: Bearer <jwt>' \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: 6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a' \
   -d '{"event_type":"UserRegistered","payload":{"user_id":"12345","email":"user@example.com","name":"John Doe"}}'
 ```
 

@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// app struct that holds the application components
 type app struct {
 	server *http.Server
 	db     *pgxpool.Pool
