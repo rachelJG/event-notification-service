@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rachelJG/event-notification-service/internal/config"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/config"
 )
 
-const migrationsDir = "internal/adapters/postgres/migrations"
+const migrationsDir = "internal/infrastructure/postgres/migrations"
 
 func main() {
 	cfg := config.Load()

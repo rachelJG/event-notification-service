@@ -118,11 +118,6 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// getenvDefault gets an environment variable or returns a default value if not set.
-//
-// key is the name of the environment variable to look up.
-// fallback is the value to return if the environment variable is not set.
-// Returns the environment variable's value if set, otherwise the fallback value.
 func getenvDefault(key, fallback string) string {
 	value := os.Getenv(key)
 	if value == "" {
@@ -131,11 +126,6 @@ func getenvDefault(key, fallback string) string {
 	return value
 }
 
-// getenvIntDefault gets an integer environment variable or returns a default value.
-//
-// key is the name of the environment variable to look up.
-// fallback is the value to return if the environment variable is not set or invalid.
-// Returns the parsed integer value if valid, otherwise the fallback value.
 func getenvIntDefault(key string, fallback int) int {
 	value := os.Getenv(key)
 	if value == "" {
@@ -148,11 +138,6 @@ func getenvIntDefault(key string, fallback int) int {
 	return parsed
 }
 
-// getenvInt64Default gets a 64-bit integer environment variable or returns a default value.
-//
-// key is the name of the environment variable to look up.
-// fallback is the value to return if the environment variable is not set or invalid.
-// Returns the parsed int64 value if valid, otherwise the fallback value.
 func getenvInt64Default(key string, fallback int64) int64 {
 	value := os.Getenv(key)
 	if value == "" {
@@ -165,11 +150,6 @@ func getenvInt64Default(key string, fallback int64) int64 {
 	return parsed
 }
 
-// getenvFloatDefault gets a floating-point environment variable or returns a default value.
-//
-// key is the name of the environment variable to look up.
-// fallback is the value to return if the environment variable is not set or invalid.
-// Returns the parsed float64 value if valid, otherwise the fallback value.
 func getenvFloatDefault(key string, fallback float64) float64 {
 	value := os.Getenv(key)
 	if value == "" {
@@ -182,11 +162,6 @@ func getenvFloatDefault(key string, fallback float64) float64 {
 	return parsed
 }
 
-// getenvDurationSecondsDefault gets a duration in seconds from an environment variable or returns a default duration.
-//
-// key is the name of the environment variable to look up.
-// fallbackSeconds is the default duration in seconds to return if the environment variable is not set or invalid.
-// Returns a time.Duration representing the parsed seconds if valid, otherwise the fallback duration.
 func getenvDurationSecondsDefault(key string, fallbackSeconds int) time.Duration {
 	value := os.Getenv(key)
 	if value == "" {
@@ -199,12 +174,6 @@ func getenvDurationSecondsDefault(key string, fallbackSeconds int) time.Duration
 	return time.Duration(parsed) * time.Second
 }
 
-// getenvBoolDefault gets a boolean environment variable or returns a default value.
-// Accepts 'true', '1', 'yes', 'y', 't' (case-insensitive) as true values.
-//
-// key is the name of the environment variable to look up.
-// fallback is the value to return if the environment variable is not set or invalid.
-// Returns the parsed boolean value if valid, otherwise the fallback value.
 func getenvBoolDefault(key string, fallback bool) bool {
 	value := os.Getenv(key)
 	if value == "" {
@@ -212,7 +181,6 @@ func getenvBoolDefault(key string, fallback bool) bool {
 	}
 	parsed, err := strconv.ParseBool(value)
 	if err != nil {
-		// Try custom true/false values
 		switch strings.ToLower(value) {
 		case "1", "t", "true", "yes", "y":
 			return true
@@ -224,12 +192,6 @@ func getenvBoolDefault(key string, fallback bool) bool {
 	return parsed
 }
 
-// getenvCSVDefault gets a comma-separated list from an environment variable or returns a default slice.
-// Trims whitespace from each value and omits empty values.
-//
-// key is the name of the environment variable to look up.
-// fallback is the value to return if the environment variable is not set.
-// Returns a slice of strings from the comma-separated environment variable, or the fallback slice.
 func getenvCSVDefault(key string, fallback []string) []string {
 	value := os.Getenv(key)
 	if value == "" {

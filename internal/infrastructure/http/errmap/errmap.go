@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/rachelJG/event-notification-service/internal/core/apperror"
+	apperror "github.com/rachelJG/event-notification-service/internal/domain/errors"
 )
 
 type HTTPError struct {

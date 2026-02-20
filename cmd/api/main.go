@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rachelJG/event-notification-service/internal/adapters/logger"
-	"github.com/rachelJG/event-notification-service/internal/app"
-	"github.com/rachelJG/event-notification-service/internal/config"
+	"github.com/rachelJG/event-notification-service/internal/application"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/config"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/logger"
 	"go.uber.org/zap"
 )
 
@@ -28,22 +28,22 @@ func main() {
 		zap.S().Fatalf("init logger: %v", err)
 	}
 
-	application, err := app.New(ctx, cfg, log)
+	app, err := application.New(ctx, cfg, log)
 	if err != nil {
 		log.Fatal("init app", zap.Error(err))
 	}
 
 	go func() {
-		application.Logger.Info("api listening", zap.String("addr", cfg.APIAddr))
-		if err := application.Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			application.Logger.Fatal("server error", zap.Error(err))
+		app.Logger.Info("api listening", zap.String("addr", cfg.APIAddr))
+		if err := app.Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			app.Logger.Fatal("server error", zap.Error(err))
 		}
 	}()
 
-	waitForShutdown(application)
+	waitForShutdown(app)
 }
 
-func waitForShutdown(application *app.App) {
+func waitForShutdown(app *application.App) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
@@ -51,7 +51,7 @@ func waitForShutdown(application *app.App) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := application.Shutdown(ctx); err != nil {
-		application.Logger.Error("shutdown error", zap.Error(err))
+	if err := app.Shutdown(ctx); err != nil {
+		app.Logger.Error("shutdown error", zap.Error(err))
 	}
 }

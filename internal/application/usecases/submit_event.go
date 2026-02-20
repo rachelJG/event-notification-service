@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rachelJG/event-notification-service/internal/core/apperror"
-	"github.com/rachelJG/event-notification-service/internal/core/domain"
-	"github.com/rachelJG/event-notification-service/internal/core/ports"
+	"github.com/rachelJG/event-notification-service/internal/domain/entities"
+	apperror "github.com/rachelJG/event-notification-service/internal/domain/errors"
+	"github.com/rachelJG/event-notification-service/internal/domain/ports"
 )
 
 type SubmitEvent struct {
@@ -18,11 +18,11 @@ func (uc SubmitEvent) Handle(ctx context.Context, eventType string, payload []by
 	if strings.TrimSpace(idempotencyKey) == "" {
 		return "", apperror.InvalidArgument("idempotency_key is required", nil)
 	}
-	if err := domain.ValidateEvent(eventType, payload); err != nil {
+	if err := entities.ValidateEvent(eventType, payload); err != nil {
 		return "", apperror.InvalidArgument("invalid event", err)
 	}
 
-	event := domain.Event{
+	event := entities.Event{
 		Type:           eventType,
 		IdempotencyKey: idempotencyKey,
 		Payload:        payload,

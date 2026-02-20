@@ -6,14 +6,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rachelJG/event-notification-service/internal/core/domain"
+	"github.com/rachelJG/event-notification-service/internal/domain/entities"
 )
 
 type EventRepository struct {
 	Pool *pgxpool.Pool
 }
 
-func (r EventRepository) Create(ctx context.Context, event domain.Event) (string, error) {
+func (r EventRepository) Create(ctx context.Context, event entities.Event) (string, error) {
 	id := event.ID
 	if id == "" {
 		id = uuid.NewString()
