@@ -12,26 +12,29 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rachelJG/event-notification-service/internal/config"
-	"github.com/rachelJG/event-notification-service/internal/core/domain"
-	"github.com/rachelJG/event-notification-service/internal/core/usecases"
+	"github.com/rachelJG/event-notification-service/internal/core/apperror"
 	"go.uber.org/zap"
 )
 
-type fakeRepo struct {
-	called bool
-	event  domain.Event
+type mockSubmitEvent struct {
+	called         bool
+	returnID       string
+	returnErr      error
+	receivedType   string
+	receivedKey    string
 }
 
-func (r *fakeRepo) Create(ctx context.Context, event domain.Event) (string, error) {
-	r.called = true
-	r.event = event
-	return "evt-1", nil
+func (m *mockSubmitEvent) Handle(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
+	m.called = true
+	m.receivedType = eventType
+	m.receivedKey = idempotencyKey
+	return m.returnID, m.returnErr
 }
 
 func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	repo := &fakeRepo{}
-	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
+	mock := &mockSubmitEvent{returnID: "evt-1"}
+	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -45,15 +48,15 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.Code)
 	}
-	if repo.called {
-		t.Fatalf("expected repo not to be called")
+	if mock.called {
+		t.Fatalf("expected use case not to be called")
 	}
 }
 
 func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	repo := &fakeRepo{}
-	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
+	mock := &mockSubmitEvent{returnID: "evt-1"}
+	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -68,15 +71,15 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.Code)
 	}
-	if repo.called {
-		t.Fatalf("expected repo not to be called")
+	if mock.called {
+		t.Fatalf("expected use case not to be called")
 	}
 }
 
 func TestSubmitEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	repo := &fakeRepo{}
-	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
+	mock := &mockSubmitEvent{returnID: "evt-1"}
+	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -91,11 +94,11 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	if resp.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d", resp.Code)
 	}
-	if !repo.called {
-		t.Fatalf("expected repo to be called")
+	if !mock.called {
+		t.Fatalf("expected use case to be called")
 	}
-	if repo.event.IdempotencyKey != "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a" {
-		t.Fatalf("expected idempotency key to be passed to repo")
+	if mock.receivedKey != "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a" {
+		t.Fatalf("expected idempotency key to be passed to use case")
 	}
 
 	var body map[string]string
@@ -107,10 +110,30 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	}
 }
 
+func TestSubmitEventHandlerUseCaseError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mock := &mockSubmitEvent{returnErr: apperror.InvalidArgument("bad event", nil)}
+	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
+
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+}
+
 func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	repo := &fakeRepo{}
-	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
+	mock := &mockSubmitEvent{returnID: "evt-1"}
+	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -124,15 +147,15 @@ func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
 	if resp.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", resp.Code)
 	}
-	if repo.called {
-		t.Fatalf("expected repo not to be called")
+	if mock.called {
+		t.Fatalf("expected use case not to be called")
 	}
 }
 
 func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	repo := &fakeRepo{}
-	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
+	mock := &mockSubmitEvent{returnID: "evt-1"}
+	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -147,15 +170,15 @@ func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	if resp.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("expected 415, got %d", resp.Code)
 	}
-	if repo.called {
-		t.Fatalf("expected repo not to be called")
+	if mock.called {
+		t.Fatalf("expected use case not to be called")
 	}
 }
 
 func TestSubmitEventRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	repo := &fakeRepo{}
-	handler := Handler{SubmitEvent: usecases.SubmitEvent{Repo: repo}, Logger: zap.NewNop()}
+	mock := &mockSubmitEvent{returnID: "evt-1"}
+	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
 	cfg := testConfig()
 	cfg.RateLimitRPS = 1
 	cfg.RateLimitBurst = 1
