@@ -1,4 +1,4 @@
-.PHONY: lint test test-integration migrate
+.PHONY: lint test test-integration migrate docs
 
 GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint
 GOCACHE ?= /tmp/go-build
@@ -29,3 +29,6 @@ migrate:
 	GOMODCACHE=$(GOMODCACHE) \
 	GOPATH=$(GOPATH) \
 	bash -c 'set -a; [ -f .env ] && . .env; set +a; go run ./cmd/migrate'
+
+docs:
+	npx --yes aglio -i docs/api.apib -o docs/api.html
