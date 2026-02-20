@@ -7,7 +7,7 @@ import (
 
 	"github.com/rachelJG/event-notification-service/internal/core/apperror"
 	"github.com/rachelJG/event-notification-service/internal/core/domain"
-	"github.com/rachelJG/event-notification-service/internal/ports"
+	"github.com/rachelJG/event-notification-service/internal/core/ports"
 )
 
 type SubmitEvent struct {

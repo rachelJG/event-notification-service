@@ -8,12 +8,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/rachelJG/event-notification-service/internal/adapters/http/dto"
 	"github.com/rachelJG/event-notification-service/internal/adapters/http/errmap"
-	"github.com/rachelJG/event-notification-service/internal/core/usecases"
+	"github.com/rachelJG/event-notification-service/internal/core/ports"
 	"go.uber.org/zap"
 )
 
 type Handler struct {
-	SubmitEvent usecases.SubmitEvent
+	SubmitEvent ports.SubmitEventUseCase
 	Logger      *zap.Logger
 }
 

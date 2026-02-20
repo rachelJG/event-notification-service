@@ -26,7 +26,7 @@ func New(ctx context.Context, cfg config.Config, log *zap.Logger) (*App, error) 
 	}
 
 	repo := postgres.EventRepository{Pool: pool}
-	uc := usecases.SubmitEvent{Repo: repo}
+	uc := &usecases.SubmitEvent{Repo: repo}
 	handler := httpadapter.Handler{SubmitEvent: uc, Logger: log}
 
 	router := httpadapter.NewRouter(handler, pool, log, cfg)
