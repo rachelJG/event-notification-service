@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rachelJG/event-notification-service/internal/infrastructure/config"
+	"github.com/rachelJG/event-notification-service/internal/config"
 )
 
 const migrationsDir = "internal/infrastructure/postgres/migrations"
