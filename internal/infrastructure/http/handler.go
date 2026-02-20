@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/rachelJG/event-notification-service/internal/adapters/http/dto"
-	"github.com/rachelJG/event-notification-service/internal/adapters/http/errmap"
-	"github.com/rachelJG/event-notification-service/internal/core/ports"
+	"github.com/rachelJG/event-notification-service/internal/domain/ports"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/dto"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/errmap"
 	"go.uber.org/zap"
 )
 

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rachelJG/event-notification-service/internal/adapters/postgres"
-	"github.com/rachelJG/event-notification-service/internal/core/domain"
+	"github.com/rachelJG/event-notification-service/internal/domain/entities"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/postgres"
 )
 
 func TestPostgresEventRepositoryCreate(t *testing.T) {
@@ -48,14 +48,14 @@ func TestPostgresEventRepositoryCreate(t *testing.T) {
 	}
 
 	repo := postgres.EventRepository{Pool: pool}
-	payload, _ := json.Marshal(domain.UserRegisteredPayload{
+	payload, _ := json.Marshal(entities.UserRegisteredPayload{
 		UserID: "1",
 		Email:  "test@example.com",
 		Name:   "Test User",
 	})
 
-	id, err := repo.Create(ctx, domain.Event{
-		Type:           domain.EventTypeUserRegistered,
+	id, err := repo.Create(ctx, entities.Event{
+		Type:           entities.EventTypeUserRegistered,
 		IdempotencyKey: "idem-1",
 		Payload:        payload,
 		OccurredAt:     time.Now().UTC(),
@@ -67,8 +67,8 @@ func TestPostgresEventRepositoryCreate(t *testing.T) {
 		t.Fatalf("expected id to be generated")
 	}
 
-	id2, err := repo.Create(ctx, domain.Event{
-		Type:           domain.EventTypeUserRegistered,
+	id2, err := repo.Create(ctx, entities.Event{
+		Type:           entities.EventTypeUserRegistered,
 		IdempotencyKey: "idem-1",
 		Payload:        payload,
 		OccurredAt:     time.Now().UTC(),

@@ -5,15 +5,15 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rachelJG/event-notification-service/internal/core/domain"
+	"github.com/rachelJG/event-notification-service/internal/domain/entities"
 )
 
 type fakeRepo struct {
-	lastEvent domain.Event
+	lastEvent entities.Event
 	err       error
 }
 
-func (r *fakeRepo) Create(ctx context.Context, event domain.Event) (string, error) {
+func (r *fakeRepo) Create(ctx context.Context, event entities.Event) (string, error) {
 	r.lastEvent = event
 	if r.err != nil {
 		return "", r.err
@@ -25,14 +25,14 @@ func TestSubmitEventHandleSuccess(t *testing.T) {
 	repo := &fakeRepo{}
 	uc := SubmitEvent{Repo: repo}
 
-	id, err := uc.Handle(context.Background(), domain.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1")
+	id, err := uc.Handle(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if id != "evt-123" {
 		t.Fatalf("expected id to match, got %s", id)
 	}
-	if repo.lastEvent.Type != domain.EventTypeUserRegistered {
+	if repo.lastEvent.Type != entities.EventTypeUserRegistered {
 		t.Fatalf("expected event type to be stored")
 	}
 	if repo.lastEvent.IdempotencyKey != "idem-1" {
@@ -44,7 +44,7 @@ func TestSubmitEventHandleValidationError(t *testing.T) {
 	repo := &fakeRepo{}
 	uc := SubmitEvent{Repo: repo}
 
-	_, err := uc.Handle(context.Background(), domain.EventTypeUserRegistered, []byte(`{"user_id":"","email":"a@b.com","name":"A"}`), "idem-1")
+	_, err := uc.Handle(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"","email":"a@b.com","name":"A"}`), "idem-1")
 	if err == nil {
 		t.Fatalf("expected validation error")
 	}
@@ -54,7 +54,7 @@ func TestSubmitEventHandleRepoError(t *testing.T) {
 	repo := &fakeRepo{err: errors.New("db error")}
 	uc := SubmitEvent{Repo: repo}
 
-	_, err := uc.Handle(context.Background(), domain.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1")
+	_, err := uc.Handle(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1")
 	if err == nil {
 		t.Fatalf("expected repo error")
 	}
@@ -64,7 +64,7 @@ func TestSubmitEventHandleMissingIdempotencyKey(t *testing.T) {
 	repo := &fakeRepo{}
 	uc := SubmitEvent{Repo: repo}
 
-	_, err := uc.Handle(context.Background(), domain.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "")
+	_, err := uc.Handle(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "")
 	if err == nil {
 		t.Fatalf("expected idempotency key error")
 	}

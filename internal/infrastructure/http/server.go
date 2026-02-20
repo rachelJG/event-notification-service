@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rachelJG/event-notification-service/internal/adapters/http/middleware"
-	"github.com/rachelJG/event-notification-service/internal/config"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/config"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/middleware"
 	"go.uber.org/zap"
 )
 
@@ -57,33 +57,23 @@ func NewRouter(handler Handler, db *pgxpool.Pool, logger *zap.Logger, cfg config
 	}
 	router.Use(middleware.RateLimit(rps, burst))
 
-	// Liveness: process is up and serving HTTP.
-	router.GET("/live", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
-	})
-
-	// Readiness: instance can serve traffic only if critical dependencies are healthy.
-	readyHandler := func(c *gin.Context) {
+	router.GET("/health", func(c *gin.Context) {
 		if db == nil {
 			if logger != nil {
-				logger.Error("readiness check failed", zap.Error(errors.New("database pool is nil")))
+				logger.Error("health check failed", zap.Error(errors.New("database pool is nil")))
 			}
 			c.JSON(503, gin.H{"status": "error", "message": "database unavailable"})
 			return
 		}
 		if err := db.Ping(c.Request.Context()); err != nil {
 			if logger != nil {
-				logger.Error("readiness check failed", zap.Error(err))
+				logger.Error("health check failed", zap.Error(err))
 			}
 			c.JSON(503, gin.H{"status": "error", "message": "database unavailable"})
 			return
 		}
 		c.JSON(200, gin.H{"status": "ok"})
-	}
-	router.GET("/ready", readyHandler)
-	// Backward compatibility for existing probes/clients.
-	router.GET("/health", readyHandler)
-
+	})
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	v1 := router.Group("/api/v1")

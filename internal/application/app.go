@@ -1,4 +1,4 @@
-package app
+package application
 
 import (
 	"context"
@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	httpadapter "github.com/rachelJG/event-notification-service/internal/adapters/http"
-	"github.com/rachelJG/event-notification-service/internal/adapters/postgres"
-	"github.com/rachelJG/event-notification-service/internal/config"
-	"github.com/rachelJG/event-notification-service/internal/core/usecases"
+	httpadapter "github.com/rachelJG/event-notification-service/internal/infrastructure/http"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/config"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/postgres"
+	"github.com/rachelJG/event-notification-service/internal/application/usecases"
 	"go.uber.org/zap"
 )
 
