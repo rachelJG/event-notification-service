@@ -82,5 +82,5 @@ func writeAuthError(c *gin.Context, err error) {
 			message = appErr.Message
 		}
 	}
-	c.AbortWithStatusJSON(status, gin.H{"error": message, "code": code})
+	c.AbortWithStatusJSON(status, gin.H{"error": message, "code": code, "request_id": c.GetString("request_id")})
 }

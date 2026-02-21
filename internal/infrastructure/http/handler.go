@@ -20,15 +20,24 @@ type Handler struct {
 
 const idempotencyHeader = "Idempotency-Key"
 
+// errorJSON writes a standardised error body including the request ID from context.
+func errorJSON(c *gin.Context, status int, code, message string) {
+	c.JSON(status, gin.H{
+		"error":      message,
+		"code":       code,
+		"request_id": c.GetString("request_id"),
+	})
+}
+
 func (h Handler) SubmitEventHandler(c *gin.Context) {
 	if !isIdempotencyKeyValid(c.GetHeader(idempotencyHeader)) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing or invalid Idempotency-Key", "code": "invalid_argument"})
+		errorJSON(c, http.StatusBadRequest, "invalid_argument", "missing or invalid Idempotency-Key")
 		return
 	}
 
 	var req dto.SubmitEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body", "code": "invalid_argument"})
+		errorJSON(c, http.StatusBadRequest, "invalid_argument", "invalid JSON body")
 		return
 	}
 	c.Set("event_type", req.EventType)
@@ -39,7 +48,7 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 		recordEventSubmitted(req.EventType, "error")
 		h.logError(c, err)
 		httpErr := errmap.FromError(err)
-		c.JSON(httpErr.Status, gin.H{"error": errmap.Message(err), "code": httpErr.Code})
+		errorJSON(c, httpErr.Status, httpErr.Code, errmap.Message(err))
 		return
 	}
 
@@ -107,7 +116,7 @@ func (h Handler) GetEventHandler(c *gin.Context) {
 	if err != nil {
 		h.logError(c, err)
 		httpErr := errmap.FromError(err)
-		c.JSON(httpErr.Status, gin.H{"error": errmap.Message(err), "code": httpErr.Code})
+		errorJSON(c, httpErr.Status, httpErr.Code, errmap.Message(err))
 		return
 	}
 	c.JSON(http.StatusOK, dto.GetEventResponse{
