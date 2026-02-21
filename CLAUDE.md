@@ -16,7 +16,7 @@ docker-compose up -d     # Start app + Postgres locally
 
 Run a single test:
 ```bash
-go test ./internal/domain/entities/ -run TestValidateEvent
+go test ./internal/application/validation/ -run TestValidateEvent
 ```
 
 Integration tests use the `//go:build integration` tag and require a live Postgres instance (`PG_DSN` env var).
@@ -28,21 +28,22 @@ Hexagonal Architecture (Domain / Application / Infrastructure). The domain layer
 ```
 cmd/api/main.go                    → Entry point, composition root, signal handling, graceful shutdown
 internal/config/                   → Env-var-based configuration (shared, layer-independent)
-internal/domain/entities/          → Event entity, payload types, validation (no imports from infrastructure)
-internal/domain/ports/             → Port interfaces (EventRepository, SubmitEventUseCase)
-internal/domain/errors/            → Typed error taxonomy (AppError with codes like invalid_argument, conflict, etc.)
-internal/application/usecases/     → Business logic (SubmitEvent use case)
-internal/infrastructure/http/      → Gin router, handler, DTOs, middleware stack, error-to-HTTP mapping
+internal/domain/entities/          → Event entity, EventType value object, payload types, NewEvent constructor
+internal/domain/ports/             → Output port interfaces (EventRepository)
+internal/application/ports/        → Input port interfaces (SubmitEventUseCase)
+internal/pkg/apperror/             → Typed error taxonomy (AppError with codes like invalid_argument, conflict, etc.)
+internal/application/usecases/     → Business logic (SubmitEvent use case, delegates to entities.NewEvent)
+internal/infrastructure/http/      → Gin router, handler, DTOs, RouterOptions, HealthChecker interface, middleware stack, error-to-HTTP mapping
 internal/infrastructure/postgres/  → EventRepository implementation using pgxpool
 internal/infrastructure/logger/    → Zap logger factory
 ```
 
-**Dependency flow:** `cmd/api (composition root) → infrastructure → ports ← usecases ← entities`. Infrastructure depends on ports; domain and application never import infrastructure.
+**Dependency flow:** `cmd/api (composition root) → infrastructure → ports ← usecases ← entities`. Infrastructure depends on ports; domain and application never import infrastructure. The HTTP adapter uses `RouterOptions` instead of importing the `config` package directly, and the health check endpoint depends on a `HealthChecker` port interface rather than `*pgxpool.Pool`.
 
 ## Key Patterns
 
 - **Idempotency**: Enforced at DB level via `UNIQUE(idempotency_key, type)` index. INSERT uses `ON CONFLICT DO UPDATE SET id = events.id RETURNING id` to return the original ID on duplicates.
-- **Error mapping**: `internal/domain/errors` defines domain error codes. `internal/infrastructure/http/errmap` maps them to HTTP status codes. Handler never sets HTTP status directly from business logic.
+- **Error mapping**: `internal/pkg/apperror` defines error codes. `internal/infrastructure/http/errmap` maps them to HTTP status codes. Handler never sets HTTP status directly from business logic.
 - **Middleware stack** (in order): Zap logger+recovery → request ID → security headers → Prometheus metrics → CORS → body limit → content-type enforcement → rate limiter. JWT auth is applied only to the events route.
 - **SQL safety**: `internal/infrastructure/postgres/sqlsafe.go` provides allowlist-based identifier sanitization for any dynamic SQL.
 

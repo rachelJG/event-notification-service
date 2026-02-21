@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	apperror "github.com/rachelJG/event-notification-service/internal/domain/errors"
+	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 )
 
 func JWTAuth(secret string) gin.HandlerFunc {

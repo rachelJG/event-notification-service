@@ -1,28 +1,30 @@
 package entities
 
 import (
-	"encoding/json"
-	"errors"
-	"strings"
 	"time"
 )
 
+// EventType is a value object representing a valid event type.
+type EventType = string
+
 const (
-	EventTypeUserRegistered         = "UserRegistered"
-	EventTypePasswordResetRequested = "PasswordResetRequested"
-	EventTypeOrderPaid              = "OrderPaid"
-	EventTypeOrderShipped           = "OrderShipped"
+	EventTypeUserRegistered         EventType = "UserRegistered"
+	EventTypePasswordResetRequested EventType = "PasswordResetRequested"
+	EventTypeOrderPaid              EventType = "OrderPaid"
+	EventTypeOrderShipped           EventType = "OrderShipped"
 )
 
-type Event struct {
-	ID             string
-	Type           string
-	IdempotencyKey string
-	Payload        json.RawMessage
-	OccurredAt     time.Time
-	CreatedAt      time.Time
+// ValidEventTypes returns the set of supported event types.
+func ValidEventTypes() []EventType {
+	return []EventType{
+		EventTypeUserRegistered,
+		EventTypePasswordResetRequested,
+		EventTypeOrderPaid,
+		EventTypeOrderShipped,
+	}
 }
 
+// Payload types define the expected structure for each event type.
 type UserRegisteredPayload struct {
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
@@ -48,58 +50,21 @@ type OrderShippedPayload struct {
 	TrackingNumber string `json:"tracking_number"`
 }
 
-func ValidateEvent(eventType string, payload json.RawMessage) error {
-	if strings.TrimSpace(eventType) == "" {
-		return errors.New("event_type is required")
-	}
+type Event struct {
+	ID             string
+	Type           string
+	IdempotencyKey string
+	Payload        []byte
+	OccurredAt     time.Time
+	CreatedAt      time.Time
+}
 
-	switch eventType {
-	case EventTypeUserRegistered:
-		var body UserRegisteredPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid UserRegistered payload")
-		}
-		if strings.TrimSpace(body.UserID) == "" || strings.TrimSpace(body.Email) == "" || strings.TrimSpace(body.Name) == "" {
-			return errors.New("UserRegistered requires user_id, email, and name")
-		}
-		if !strings.Contains(body.Email, "@") {
-			return errors.New("UserRegistered requires a valid email")
-		}
-		return nil
-	case EventTypePasswordResetRequested:
-		var body PasswordResetRequestedPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid PasswordResetRequested payload")
-		}
-		if strings.TrimSpace(body.UserID) == "" || strings.TrimSpace(body.Email) == "" {
-			return errors.New("PasswordResetRequested requires user_id and email")
-		}
-		if !strings.Contains(body.Email, "@") {
-			return errors.New("PasswordResetRequested requires a valid email")
-		}
-		return nil
-	case EventTypeOrderPaid:
-		var body OrderPaidPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid OrderPaid payload")
-		}
-		if strings.TrimSpace(body.OrderID) == "" || strings.TrimSpace(body.UserID) == "" || strings.TrimSpace(body.Currency) == "" {
-			return errors.New("OrderPaid requires order_id, user_id, and currency")
-		}
-		if body.Amount <= 0 {
-			return errors.New("OrderPaid requires amount > 0")
-		}
-		return nil
-	case EventTypeOrderShipped:
-		var body OrderShippedPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid OrderShipped payload")
-		}
-		if strings.TrimSpace(body.OrderID) == "" || strings.TrimSpace(body.UserID) == "" || strings.TrimSpace(body.Carrier) == "" || strings.TrimSpace(body.TrackingNumber) == "" {
-			return errors.New("OrderShipped requires order_id, user_id, carrier, and tracking_number")
-		}
-		return nil
-	default:
-		return errors.New("unsupported event_type")
-	}
+// NewEvent constructs an Event enforcing domain invariants.
+func NewEvent(eventType, idempotencyKey string, payload []byte) (Event, error) {
+	return Event{
+		Type:           eventType,
+		IdempotencyKey: idempotencyKey,
+		Payload:        payload,
+		OccurredAt:     time.Now().UTC(),
+	}, nil
 }

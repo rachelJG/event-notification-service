@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	apperror "github.com/rachelJG/event-notification-service/internal/domain/errors"
+	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 )
 
 func TestFromErrorMapping(t *testing.T) {

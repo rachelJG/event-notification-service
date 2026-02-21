@@ -73,16 +73,14 @@ The project follows a Hexagonal Architecture (Ports & Adapters) organized in thr
    │   Infrastructure     │ │     Application      │ │      Domain        │
    │                      │ │                      │ │                    │
    │  http/               │ │  usecases/           │ │  entities/         │
-   │   ├─ handler.go      │ │   └─ submit_event    │ │   └─ event.go     │
-   │   ├─ server.go       │ │      _impl.go        │ │                    │
-   │   ├─ dto/            │ │                      │ │  ports/            │
-   │   ├─ errmap/         │ │                      │ │   └─ event_        │
+   │   ├─ handler.go      │ │   └─ submit_event.go │ │   └─ event.go     │
+   │   ├─ server.go       │ │                      │ │                    │
+   │   ├─ dto/            │ │  ports/              │ │  ports/            │
+   │   ├─ errmap/         │ │   └─ submit_event.go │ │   └─ event_        │
    │   └─ middleware/     │ │                      │ │      repository.go │
    │                      │ │                      │ │                    │
    │  postgres/           │ │                      │ │  errors/           │
-   │   └─ event_          │ │                      │ │   └─ apperror.go  │
-   │      repository      │ │                      │ │                    │
-   │      _impl.go        │ │                      │ │                    │
+   │   └─ event_repository.go    │ │                      │ │   └─ apperror.go  │
    │                      │ │                      │ │                    │
    │  logger/             │ │                      │ │                    │
    │   └─ zap.go          │ │                      │ │                    │
@@ -100,9 +98,11 @@ internal/
 ├── config/                        # Shared configuration (layer-independent)
 ├── domain/
 │   ├── entities/                  # Event, payload types, validation
-│   ├── ports/                     # EventRepository, SubmitEventUseCase interfaces
-│   └── errors/                    # Typed error taxonomy (AppError)
+│   ├── ports/                     # EventRepository (output ports)
+├── pkg/
+│   └── apperror/                  # Typed error taxonomy (AppError)
 ├── application/
+│   ├── ports/                     # SubmitEventUseCase (input ports)
 │   └── usecases/                  # Business logic (SubmitEvent)
 ├── infrastructure/
 │   ├── http/                      # Gin router, handler, DTOs, middleware, errmap
