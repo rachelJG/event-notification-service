@@ -69,3 +69,23 @@ func TestSubmitEventHandleMissingIdempotencyKey(t *testing.T) {
 		t.Fatalf("expected idempotency key error")
 	}
 }
+
+func TestSubmitEventHandleEmptyEventType(t *testing.T) {
+	repo := &fakeRepo{}
+	uc := SubmitEvent{Repo: repo}
+
+	_, err := uc.Handle(context.Background(), "", []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1")
+	if err == nil {
+		t.Fatal("expected error for empty event_type")
+	}
+}
+
+func TestSubmitEventHandleUnsupportedEventType(t *testing.T) {
+	repo := &fakeRepo{}
+	uc := SubmitEvent{Repo: repo}
+
+	_, err := uc.Handle(context.Background(), "UnknownType", []byte(`{"user_id":"1"}`), "idem-1")
+	if err == nil {
+		t.Fatal("expected error for unsupported event_type")
+	}
+}

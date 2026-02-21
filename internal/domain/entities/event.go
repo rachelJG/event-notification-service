@@ -1,6 +1,9 @@
 package entities
 
 import (
+	"errors"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -61,6 +64,15 @@ type Event struct {
 
 // NewEvent constructs an Event enforcing domain invariants.
 func NewEvent(eventType, idempotencyKey string, payload []byte) (Event, error) {
+	if strings.TrimSpace(eventType) == "" {
+		return Event{}, errors.New("event_type is required")
+	}
+	if !slices.Contains(ValidEventTypes(), eventType) {
+		return Event{}, errors.New("unsupported event_type")
+	}
+	if strings.TrimSpace(idempotencyKey) == "" {
+		return Event{}, errors.New("idempotency_key is required")
+	}
 	return Event{
 		Type:           eventType,
 		IdempotencyKey: idempotencyKey,
