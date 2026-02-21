@@ -21,13 +21,13 @@ const idempotencyHeader = "Idempotency-Key"
 
 func (h Handler) SubmitEventHandler(c *gin.Context) {
 	if !isIdempotencyKeyValid(c.GetHeader(idempotencyHeader)) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing or invalid Idempotency-Key"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing or invalid Idempotency-Key", "code": "invalid_argument"})
 		return
 	}
 
 	var req dto.SubmitEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body", "code": "invalid_argument"})
 		return
 	}
 	c.Set("event_type", req.EventType)

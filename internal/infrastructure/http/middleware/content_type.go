@@ -14,7 +14,7 @@ func RequireJSONContentType() gin.HandlerFunc {
 		if c.Request.Method == http.MethodPost || c.Request.Method == http.MethodPut || c.Request.Method == http.MethodPatch {
 			contentType := c.GetHeader("Content-Type")
 			if contentType == "" || !strings.HasPrefix(strings.ToLower(contentType), jsonContentType) {
-				c.AbortWithStatusJSON(http.StatusUnsupportedMediaType, gin.H{"error": "Content-Type must be application/json"})
+				c.AbortWithStatusJSON(http.StatusUnsupportedMediaType, gin.H{"error": "Content-Type must be application/json", "code": "invalid_argument"})
 				return
 			}
 		}

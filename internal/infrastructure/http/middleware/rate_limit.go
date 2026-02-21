@@ -57,7 +57,7 @@ func RateLimit(requestsPerSecond float64, burst int) gin.HandlerFunc {
 		}
 		limiter := getLimiter(ip)
 		if !limiter.Allow() {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded"})
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded", "code": "rate_limited"})
 			return
 		}
 		c.Next()

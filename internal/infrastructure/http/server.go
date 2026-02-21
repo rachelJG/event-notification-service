@@ -60,14 +60,14 @@ func NewRouter(handler Handler, health HealthChecker, logger *zap.Logger, opts R
 			if logger != nil {
 				logger.Error("health check failed", zap.Error(errors.New("health checker is nil")))
 			}
-			c.JSON(503, gin.H{"status": "error", "message": "database unavailable"})
+			c.JSON(503, gin.H{"error": "database unavailable", "code": "internal"})
 			return
 		}
 		if err := health.Ping(c.Request.Context()); err != nil {
 			if logger != nil {
 				logger.Error("health check failed", zap.Error(err))
 			}
-			c.JSON(503, gin.H{"status": "error", "message": "database unavailable"})
+			c.JSON(503, gin.H{"error": "database unavailable", "code": "internal"})
 			return
 		}
 		c.JSON(200, gin.H{"status": "ok"})
