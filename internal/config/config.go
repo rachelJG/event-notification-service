@@ -39,6 +39,9 @@ type Config struct {
 	// IdleTimeout is the maximum amount of time to wait for the next request (default: 60s)
 	IdleTimeout time.Duration
 
+	// DBQueryTimeout is the maximum duration for a single database query (default: 5s)
+	DBQueryTimeout time.Duration
+
 	// DBPoolMaxConns is the maximum number of connections in the pool (default: 10)
 	DBPoolMaxConns int32
 	// DBPoolMinConns is the minimum number of idle connections kept in the pool (default: 2)
@@ -98,6 +101,8 @@ func Load() Config {
 		ReadTimeout:       getenvDurationSecondsDefault("READ_TIMEOUT", 15),
 		WriteTimeout:      getenvDurationSecondsDefault("WRITE_TIMEOUT", 15),
 		IdleTimeout:       getenvDurationSecondsDefault("IDLE_TIMEOUT", 60),
+
+		DBQueryTimeout:        getenvDurationSecondsDefault("DB_QUERY_TIMEOUT", 5),
 
 		DBPoolMaxConns:        int32(getenvIntDefault("DB_POOL_MAX_CONNS", 10)),
 		DBPoolMinConns:        int32(getenvIntDefault("DB_POOL_MIN_CONNS", 2)),

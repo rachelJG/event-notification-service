@@ -50,7 +50,7 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		return nil, err
 	}
 
-	repo := postgres.EventRepository{Pool: pool}
+	repo := postgres.EventRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
 	var uc appports.SubmitEventUseCase = &usecases.SubmitEvent{Repo: repo}
 	handler := httpadapter.Handler{SubmitEvent: uc, Logger: log}
 
