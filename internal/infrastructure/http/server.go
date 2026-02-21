@@ -55,19 +55,28 @@ func NewRouter(handler Handler, health HealthChecker, logger *zap.Logger, opts R
 	}
 	router.Use(middleware.RateLimit(rps, burst))
 
-	router.GET("/health", func(c *gin.Context) {
+	// Liveness: only checks that the process is running — no external I/O.
+	// Used by Kubernetes livenessProbe; a failure here triggers a pod restart.
+	router.GET("/health/live", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// Readiness: checks that the service can handle traffic (DB reachable).
+	// Used by Kubernetes readinessProbe; a failure removes the pod from rotation
+	// without restarting it.
+	router.GET("/health/ready", func(c *gin.Context) {
 		if health == nil {
 			if logger != nil {
-				logger.Error("health check failed", zap.Error(errors.New("health checker is nil")))
+				logger.Error("readiness check failed", zap.Error(errors.New("health checker is nil")))
 			}
-			c.JSON(503, gin.H{"error": "database unavailable", "code": "internal"})
+			c.JSON(503, gin.H{"error": "database unavailable", "code": "internal", "request_id": c.GetString("request_id")})
 			return
 		}
 		if err := health.Ping(c.Request.Context()); err != nil {
 			if logger != nil {
-				logger.Error("health check failed", zap.Error(err))
+				logger.Error("readiness check failed", zap.Error(err))
 			}
-			c.JSON(503, gin.H{"error": "database unavailable", "code": "internal"})
+			c.JSON(503, gin.H{"error": "database unavailable", "code": "internal", "request_id": c.GetString("request_id")})
 			return
 		}
 		c.JSON(200, gin.H{

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -245,6 +246,9 @@ func assertErrorCode(t *testing.T, resp *httptest.ResponseRecorder, wantCode str
 	if body["code"] != wantCode {
 		t.Fatalf("expected error code %q, got %q", wantCode, body["code"])
 	}
+	if body["request_id"] == "" {
+		t.Fatalf("expected request_id in error response, got empty")
+	}
 }
 
 func testRouterOptions() RouterOptions {
@@ -345,6 +349,62 @@ func TestGetEventHandlerUnauthorized(t *testing.T) {
 
 	if resp.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", resp.Code)
+	}
+}
+
+// --- health probe tests ---
+
+type mockHealthChecker struct {
+	pingErr error
+}
+
+func (m *mockHealthChecker) Ping(_ context.Context) error { return m.pingErr }
+func (m *mockHealthChecker) Stats() DBStats               { return DBStats{MaxConns: 10} }
+
+func TestLivenessAlwaysOK(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	// health=nil: liveness must not touch the DB
+	router := NewRouter(Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{}}, nil, zap.NewNop(), testRouterOptions())
+	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestReadinessOKWhenDBUp(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := NewRouter(
+		Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{}},
+		&mockHealthChecker{}, zap.NewNop(), testRouterOptions(),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("expected status ok, got %v", body["status"])
+	}
+}
+
+func TestReadiness503WhenDBDown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := NewRouter(
+		Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{}},
+		&mockHealthChecker{pingErr: errors.New("connection refused")}, zap.NewNop(), testRouterOptions(),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
 	}
 }
 
