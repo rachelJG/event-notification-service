@@ -23,6 +23,7 @@ func TestFromErrorMapping(t *testing.T) {
 		{"timeout", apperror.Timeout("slow", nil), http.StatusGatewayTimeout, "timeout"},
 		{"rate_limited", apperror.New(apperror.CodeRateLimited, "slow down", nil), http.StatusTooManyRequests, "rate_limited"},
 		{"deadline", context.DeadlineExceeded, http.StatusGatewayTimeout, "timeout"},
+		{"canceled", context.Canceled, StatusClientClosedRequest, "canceled"},
 	}
 
 	for _, tc := range cases {

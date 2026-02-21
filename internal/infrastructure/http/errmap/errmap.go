@@ -13,7 +13,14 @@ type HTTPError struct {
 	Code   string
 }
 
+// StatusClientClosedRequest is the de-facto status code (nginx convention) for
+// requests cancelled by the client before the server could respond.
+const StatusClientClosedRequest = 499
+
 func FromError(err error) HTTPError {
+	if errors.Is(err, context.Canceled) {
+		return HTTPError{Status: StatusClientClosedRequest, Code: "canceled"}
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return HTTPError{Status: http.StatusGatewayTimeout, Code: "timeout"}
 	}
@@ -42,6 +49,9 @@ func FromError(err error) HTTPError {
 }
 
 func Message(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "request canceled"
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "request timeout"
 	}

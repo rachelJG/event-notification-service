@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 	"go.uber.org/zap"
 )
@@ -244,5 +245,56 @@ func testRouterOptions() RouterOptions {
 		RateLimitBurst:      1000,
 		CORSAllowAllOrigins: true,
 		CORSAllowedHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Idempotency-Key", "Authorization"},
+	}
+}
+
+func TestEventsSubmittedMetricSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mock := &mockSubmitEvent{returnID: "evt-1"}
+	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+
+	// Reset counter state by reading current value before the request
+	before := testutil.ToFloat64(eventsSubmittedTotal.WithLabelValues("UserRegistered", "success"))
+
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91b")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", resp.Code)
+	}
+	after := testutil.ToFloat64(eventsSubmittedTotal.WithLabelValues("UserRegistered", "success"))
+	if after-before != 1 {
+		t.Fatalf("expected events_submitted_total to increment by 1, got %v", after-before)
+	}
+}
+
+func TestEventsSubmittedMetricError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mock := &mockSubmitEvent{returnErr: apperror.InvalidArgument("bad event", nil)}
+	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+
+	before := testutil.ToFloat64(eventsSubmittedTotal.WithLabelValues("UserRegistered", "error"))
+
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91c")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+	after := testutil.ToFloat64(eventsSubmittedTotal.WithLabelValues("UserRegistered", "error"))
+	if after-before != 1 {
+		t.Fatalf("expected events_submitted_total{error} to increment by 1, got %v", after-before)
 	}
 }
