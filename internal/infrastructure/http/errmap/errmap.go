@@ -32,6 +32,8 @@ func FromError(err error) HTTPError {
 			return HTTPError{Status: http.StatusConflict, Code: string(appErr.Code)}
 		case apperror.CodeTimeout:
 			return HTTPError{Status: http.StatusGatewayTimeout, Code: string(appErr.Code)}
+		case apperror.CodeRateLimited:
+			return HTTPError{Status: http.StatusTooManyRequests, Code: string(appErr.Code)}
 		default:
 			return HTTPError{Status: http.StatusInternalServerError, Code: string(apperror.CodeInternal)}
 		}

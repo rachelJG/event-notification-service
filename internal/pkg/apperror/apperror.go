@@ -11,6 +11,7 @@ const (
 	CodeNotFound         Code = "not_found"
 	CodeConflict         Code = "conflict"
 	CodeTimeout          Code = "timeout"
+	CodeRateLimited      Code = "rate_limited"
 	CodeInternal         Code = "internal"
 )
 

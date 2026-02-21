@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/rachelJG/event-notification-service/internal/config"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 	"go.uber.org/zap"
 )
@@ -35,7 +34,7 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockSubmitEvent{returnID: "evt-1"}
 	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -51,13 +50,14 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	if mock.called {
 		t.Fatalf("expected use case not to be called")
 	}
+	assertErrorCode(t, resp, "invalid_argument")
 }
 
 func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockSubmitEvent{returnID: "evt-1"}
 	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -74,13 +74,14 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	if mock.called {
 		t.Fatalf("expected use case not to be called")
 	}
+	assertErrorCode(t, resp, "invalid_argument")
 }
 
 func TestSubmitEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockSubmitEvent{returnID: "evt-1"}
 	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -114,7 +115,7 @@ func TestSubmitEventHandlerUseCaseError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockSubmitEvent{returnErr: apperror.InvalidArgument("bad event", nil)}
 	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -134,7 +135,7 @@ func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockSubmitEvent{returnID: "evt-1"}
 	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -156,7 +157,7 @@ func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockSubmitEvent{returnID: "evt-1"}
 	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testConfig())
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -179,10 +180,10 @@ func TestSubmitEventRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockSubmitEvent{returnID: "evt-1"}
 	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
-	cfg := testConfig()
-	cfg.RateLimitRPS = 1
-	cfg.RateLimitBurst = 1
-	router := NewRouter(handler, nil, zap.NewNop(), cfg)
+	opts := testRouterOptions()
+	opts.RateLimitRPS = 1
+	opts.RateLimitBurst = 1
+	router := NewRouter(handler, nil, zap.NewNop(), opts)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -224,16 +225,23 @@ func testJWT(t *testing.T, secret string) string {
 	return signed
 }
 
-func testConfig() config.Config {
-	return config.Config{
+func assertErrorCode(t *testing.T, resp *httptest.ResponseRecorder, wantCode string) {
+	t.Helper()
+	var body map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("could not parse response body: %v", err)
+	}
+	if body["code"] != wantCode {
+		t.Fatalf("expected error code %q, got %q", wantCode, body["code"])
+	}
+}
+
+func testRouterOptions() RouterOptions {
+	return RouterOptions{
 		JWTSecret:           "test-secret",
 		MaxBodyBytes:        1 << 20,
 		RateLimitRPS:        1000,
 		RateLimitBurst:      1000,
-		ReadTimeout:         15 * time.Second,
-		WriteTimeout:        15 * time.Second,
-		IdleTimeout:         60 * time.Second,
-		ReadHeaderTimeout:   5 * time.Second,
 		CORSAllowAllOrigins: true,
 		CORSAllowedHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Idempotency-Key", "Authorization"},
 	}
