@@ -35,12 +35,14 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 
 	id, err := h.SubmitEvent.Handle(c.Request.Context(), req.EventType, req.Payload, c.GetHeader(idempotencyHeader))
 	if err != nil {
+		recordEventSubmitted(req.EventType, "error")
 		h.logError(c, err)
 		httpErr := errmap.FromError(err)
 		c.JSON(httpErr.Status, gin.H{"error": errmap.Message(err), "code": httpErr.Code})
 		return
 	}
 
+	recordEventSubmitted(req.EventType, "success")
 	c.JSON(http.StatusAccepted, dto.SubmitEventResponse{ID: id})
 }
 
