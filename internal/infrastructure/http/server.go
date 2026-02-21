@@ -70,7 +70,12 @@ func NewRouter(handler Handler, health HealthChecker, logger *zap.Logger, opts R
 			c.JSON(503, gin.H{"error": "database unavailable", "code": "internal"})
 			return
 		}
-		c.JSON(200, gin.H{"status": "ok"})
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"version": opts.Version,
+			"commit":  opts.Commit,
+			"db":      health.Stats(),
+		})
 	})
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
