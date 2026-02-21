@@ -10,8 +10,3 @@ import (
 type EventRepository interface {
 	Create(ctx context.Context, event entities.Event) (string, error)
 }
-
-// Input port: interface used by driving adapters (HTTP, gRPC, etc.) to communicate with the application.
-type SubmitEventUseCase interface {
-	Handle(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error)
-}

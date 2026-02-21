@@ -6,14 +6,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/rachelJG/event-notification-service/internal/domain/ports"
+	appports "github.com/rachelJG/event-notification-service/internal/application/ports"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/dto"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/errmap"
 	"go.uber.org/zap"
 )
 
 type Handler struct {
-	SubmitEvent ports.SubmitEventUseCase
+	SubmitEvent appports.SubmitEventUseCase
 	Logger      *zap.Logger
 }
 

@@ -11,17 +11,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	apperror "github.com/rachelJG/event-notification-service/internal/domain/errors"
 	"github.com/rachelJG/event-notification-service/internal/config"
+	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 	"go.uber.org/zap"
 )
 
 type mockSubmitEvent struct {
-	called         bool
-	returnID       string
-	returnErr      error
-	receivedType   string
-	receivedKey    string
+	called       bool
+	returnID     string
+	returnErr    error
+	receivedType string
+	receivedKey  string
 }
 
 func (m *mockSubmitEvent) Handle(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
