@@ -66,6 +66,54 @@ func (r EventRepository) GetByID(ctx context.Context, id string) (entities.Event
 	return e, nil
 }
 
+func (r EventRepository) ClaimPending(ctx context.Context, limit int) ([]entities.Event, error) {
+	if r.QueryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
+		defer cancel()
+	}
+
+	rows, err := r.Pool.Query(ctx, `
+		UPDATE events SET status = 'processing'
+		WHERE id IN (
+			SELECT id FROM events
+			WHERE status = 'accepted'
+			ORDER BY created_at
+			FOR UPDATE SKIP LOCKED
+			LIMIT $1
+		)
+		RETURNING id, type, idempotency_key, payload, occurred_at, created_at
+	`, limit)
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	defer rows.Close()
+
+	var events []entities.Event
+	for rows.Next() {
+		var e entities.Event
+		if err := rows.Scan(&e.ID, &e.Type, &e.IdempotencyKey, &e.Payload, &e.OccurredAt, &e.CreatedAt); err != nil {
+			return nil, mapDBError(err)
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
+func (r EventRepository) SetStatus(ctx context.Context, id string, status string) error {
+	if r.QueryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
+		defer cancel()
+	}
+
+	_, err := r.Pool.Exec(ctx, `UPDATE events SET status = $1 WHERE id = $2`, status, id)
+	if err != nil {
+		return mapDBError(err)
+	}
+	return nil
+}
+
 // mapDBError translates pgx/pgconn errors into AppError codes so that the
 // application layer never needs to import database-specific packages.
 func mapDBError(err error) error {

@@ -34,6 +34,14 @@ func (r *fakeRepo) GetByID(ctx context.Context, id string) (entities.Event, erro
 	return entities.Event{}, nil
 }
 
+func (r *fakeRepo) ClaimPending(ctx context.Context, limit int) ([]entities.Event, error) {
+	return nil, nil
+}
+
+func (r *fakeRepo) SetStatus(ctx context.Context, id string, status string) error {
+	return nil
+}
+
 func TestSubmitEventHandleSuccess(t *testing.T) {
 	repo := &fakeRepo{}
 	uc := SubmitEvent{Repo: repo}
