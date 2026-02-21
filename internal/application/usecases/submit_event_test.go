@@ -9,8 +9,9 @@ import (
 )
 
 type fakeRepo struct {
-	lastEvent entities.Event
-	err       error
+	lastEvent  entities.Event
+	storedByID map[string]entities.Event
+	err        error
 }
 
 func (r *fakeRepo) Create(ctx context.Context, event entities.Event) (string, error) {
@@ -19,6 +20,18 @@ func (r *fakeRepo) Create(ctx context.Context, event entities.Event) (string, er
 		return "", r.err
 	}
 	return "evt-123", nil
+}
+
+func (r *fakeRepo) GetByID(ctx context.Context, id string) (entities.Event, error) {
+	if r.err != nil {
+		return entities.Event{}, r.err
+	}
+	if r.storedByID != nil {
+		if e, ok := r.storedByID[id]; ok {
+			return e, nil
+		}
+	}
+	return entities.Event{}, nil
 }
 
 func TestSubmitEventHandleSuccess(t *testing.T) {

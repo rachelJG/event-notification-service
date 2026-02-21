@@ -70,8 +70,9 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 	}
 
 	repo := postgres.EventRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
-	var uc appports.SubmitEventUseCase = &usecases.SubmitEvent{Repo: repo}
-	handler := httpadapter.Handler{SubmitEvent: uc, Logger: log}
+	var submitUC appports.SubmitEventUseCase = &usecases.SubmitEvent{Repo: repo}
+	var getUC appports.GetEventUseCase = &usecases.GetEvent{Repo: repo}
+	handler := httpadapter.Handler{SubmitEvent: submitUC, GetEvent: getUC, Logger: log}
 
 	health := pgHealthChecker{pool: pool}
 	opts := httpadapter.RouterOptions{

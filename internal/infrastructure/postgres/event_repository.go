@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rachelJG/event-notification-service/internal/domain/entities"
@@ -41,6 +42,28 @@ func (r EventRepository) Create(ctx context.Context, event entities.Event) (stri
 	}
 
 	return id, nil
+}
+
+func (r EventRepository) GetByID(ctx context.Context, id string) (entities.Event, error) {
+	if r.QueryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
+		defer cancel()
+	}
+
+	var e entities.Event
+	err := r.Pool.QueryRow(ctx, `
+		SELECT id, type, idempotency_key, payload, occurred_at, created_at
+		FROM events
+		WHERE id = $1
+	`, id).Scan(&e.ID, &e.Type, &e.IdempotencyKey, &e.Payload, &e.OccurredAt, &e.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return entities.Event{}, apperror.NotFound("event not found", err)
+		}
+		return entities.Event{}, mapDBError(err)
+	}
+	return e, nil
 }
 
 // mapDBError translates pgx/pgconn errors into AppError codes so that the
