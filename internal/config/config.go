@@ -70,6 +70,17 @@ type Config struct {
 	EnableHSTS bool
 	// HSTSMaxAgeSeconds defines the HSTS max-age in seconds (default: 31536000 - 1 year)
 	HSTSMaxAgeSeconds int
+
+	// SMTPHost is the SMTP server hostname (required in production)
+	SMTPHost string
+	// SMTPPort is the SMTP server port (default: "587")
+	SMTPPort string
+	// SMTPUser is the SMTP authentication username
+	SMTPUser string
+	// SMTPPassword is the SMTP authentication password
+	SMTPPassword string
+	// SMTPFrom is the sender email address (required when SMTPHost is set)
+	SMTPFrom string
 }
 
 // Load loads the application configuration from environment variables with sensible defaults.
@@ -128,6 +139,12 @@ func Load() Config {
 		CORSAllowedHeaders:  getenvCSVDefault("CORS_ALLOWED_HEADERS", []string{"Origin", "Content-Length", "Content-Type", "Idempotency-Key", "Authorization"}),
 		EnableHSTS:          getenvBoolDefault("HSTS_ENABLED", appEnv == "production"),
 		HSTSMaxAgeSeconds:   getenvIntDefault("HSTS_MAX_AGE_SECONDS", 31536000),
+
+		SMTPHost:     getenvDefault("SMTP_HOST", ""),
+		SMTPPort:     getenvDefault("SMTP_PORT", "587"),
+		SMTPUser:     getenvDefault("SMTP_USER", ""),
+		SMTPPassword: os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:     getenvDefault("SMTP_FROM", ""),
 	}
 }
 
@@ -155,6 +172,12 @@ func (c Config) Validate() error {
 	}
 	if c.EnableHSTS && c.HSTSMaxAgeSeconds <= 0 {
 		return fmt.Errorf("invalid HSTS config: HSTS_MAX_AGE_SECONDS must be > 0")
+	}
+	if strings.EqualFold(c.AppEnv, "production") && strings.TrimSpace(c.SMTPHost) == "" {
+		return fmt.Errorf("invalid SMTP config: SMTP_HOST is required in production")
+	}
+	if strings.TrimSpace(c.SMTPHost) != "" && strings.TrimSpace(c.SMTPFrom) == "" {
+		return fmt.Errorf("invalid SMTP config: SMTP_FROM is required when SMTP_HOST is set")
 	}
 	return nil
 }
