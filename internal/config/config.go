@@ -39,6 +39,15 @@ type Config struct {
 	// IdleTimeout is the maximum amount of time to wait for the next request (default: 60s)
 	IdleTimeout time.Duration
 
+	// DBPoolMaxConns is the maximum number of connections in the pool (default: 10)
+	DBPoolMaxConns int32
+	// DBPoolMinConns is the minimum number of idle connections kept in the pool (default: 2)
+	DBPoolMinConns int32
+	// DBPoolMaxConnLifetime is the maximum time a connection may be reused (default: 1h)
+	DBPoolMaxConnLifetime time.Duration
+	// DBPoolMaxConnIdleTime is the maximum time a connection may sit idle (default: 30m)
+	DBPoolMaxConnIdleTime time.Duration
+
 	// CORSAllowAllOrigins enables CORS for all origins (default: true in development)
 	CORSAllowAllOrigins bool
 	// CORSAllowedOrigins lists allowed origins when CORSAllowAllOrigins is false
@@ -89,6 +98,11 @@ func Load() Config {
 		ReadTimeout:       getenvDurationSecondsDefault("READ_TIMEOUT", 15),
 		WriteTimeout:      getenvDurationSecondsDefault("WRITE_TIMEOUT", 15),
 		IdleTimeout:       getenvDurationSecondsDefault("IDLE_TIMEOUT", 60),
+
+		DBPoolMaxConns:        int32(getenvIntDefault("DB_POOL_MAX_CONNS", 10)),
+		DBPoolMinConns:        int32(getenvIntDefault("DB_POOL_MIN_CONNS", 2)),
+		DBPoolMaxConnLifetime: getenvDurationSecondsDefault("DB_POOL_MAX_CONN_LIFETIME", 3600),
+		DBPoolMaxConnIdleTime: getenvDurationSecondsDefault("DB_POOL_MAX_CONN_IDLE_TIME", 1800),
 
 		CORSAllowAllOrigins: getenvBoolDefault("CORS_ALLOW_ALL", defaultAllowAll),
 		CORSAllowedOrigins:  getenvCSVDefault("CORS_ALLOWED_ORIGINS", nil),

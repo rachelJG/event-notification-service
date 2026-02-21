@@ -19,6 +19,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// pgHealthChecker adapts *pgxpool.Pool to the ports.HealthChecker interface.
+type pgHealthChecker struct {
+	pool *pgxpool.Pool
+}
+
+func (h pgHealthChecker) Ping(ctx context.Context) error {
+	return h.pool.Ping(ctx)
+}
+
 // app struct that holds the application components
 type app struct {
 	server *http.Server
@@ -27,7 +36,16 @@ type app struct {
 }
 
 func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, error) {
-	pool, err := pgxpool.New(ctx, cfg.PGDSN)
+	poolCfg, err := pgxpool.ParseConfig(cfg.PGDSN)
+	if err != nil {
+		return nil, fmt.Errorf("parse pg dsn: %w", err)
+	}
+	poolCfg.MaxConns = cfg.DBPoolMaxConns
+	poolCfg.MinConns = cfg.DBPoolMinConns
+	poolCfg.MaxConnLifetime = cfg.DBPoolMaxConnLifetime
+	poolCfg.MaxConnIdleTime = cfg.DBPoolMaxConnIdleTime
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +54,20 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 	var uc appports.SubmitEventUseCase = &usecases.SubmitEvent{Repo: repo}
 	handler := httpadapter.Handler{SubmitEvent: uc, Logger: log}
 
-	router := httpadapter.NewRouter(handler, pool, log, cfg)
+	health := pgHealthChecker{pool: pool}
+	opts := httpadapter.RouterOptions{
+		JWTSecret:           cfg.JWTSecret,
+		MaxBodyBytes:        cfg.MaxBodyBytes,
+		RateLimitRPS:        cfg.RateLimitRPS,
+		RateLimitBurst:      cfg.RateLimitBurst,
+		CORSAllowAllOrigins: cfg.CORSAllowAllOrigins,
+		CORSAllowedOrigins:  cfg.CORSAllowedOrigins,
+		CORSAllowedHeaders:  cfg.CORSAllowedHeaders,
+		EnableHSTS:          cfg.EnableHSTS,
+		HSTSMaxAgeSeconds:   cfg.HSTSMaxAgeSeconds,
+	}
+
+	router := httpadapter.NewRouter(handler, health, log, opts)
 	server := &http.Server{
 		Addr:              cfg.APIAddr,
 		Handler:           router,
