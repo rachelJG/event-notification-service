@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rachelJG/event-notification-service/internal/config"
 )
@@ -30,28 +32,48 @@ func main() {
 		fatalf("ensure migrations table: %v", err)
 	}
 
-	files, err := listMigrations(migrationsDir)
+	cmd := "up"
+	if len(os.Args) > 1 {
+		cmd = os.Args[1]
+	}
+
+	switch cmd {
+	case "up":
+		if err := runUp(ctx, pool); err != nil {
+			fatalf("migrate up: %v", err)
+		}
+	case "down":
+		if err := runDown(ctx, pool); err != nil {
+			fatalf("migrate down: %v", err)
+		}
+	default:
+		fatalf("unknown command %q — use 'up' or 'down'", cmd)
+	}
+}
+
+func runUp(ctx context.Context, pool *pgxpool.Pool) error {
+	files, err := listUpMigrations(migrationsDir)
 	if err != nil {
-		fatalf("list migrations: %v", err)
+		return fmt.Errorf("list migrations: %w", err)
 	}
 	if len(files) == 0 {
 		fmt.Println("no migrations found")
-		return
+		return nil
 	}
 
 	applied, err := loadApplied(ctx, pool)
 	if err != nil {
-		fatalf("load applied migrations: %v", err)
+		return fmt.Errorf("load applied migrations: %w", err)
 	}
 
 	appliedCount := 0
 	for _, file := range files {
-		version := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+		version := versionFromUpFile(file)
 		if applied[version] {
 			continue
 		}
 		if err := applyMigration(ctx, pool, version, file); err != nil {
-			fatalf("apply %s: %v", version, err)
+			return fmt.Errorf("apply %s: %w", version, err)
 		}
 		appliedCount++
 		fmt.Printf("applied %s\n", version)
@@ -60,28 +82,44 @@ func main() {
 	if appliedCount == 0 {
 		fmt.Println("no new migrations to apply")
 	}
+	return nil
+}
+
+func runDown(ctx context.Context, pool *pgxpool.Pool) error {
+	version, err := lastApplied(ctx, pool)
+	if err != nil {
+		return fmt.Errorf("query last applied: %w", err)
+	}
+	if version == "" {
+		fmt.Println("nothing to roll back")
+		return nil
+	}
+
+	downFile := filepath.Join(migrationsDir, version+".down.sql")
+	if err := rollbackMigration(ctx, pool, version, downFile); err != nil {
+		return fmt.Errorf("rollback %s: %w", version, err)
+	}
+	fmt.Printf("rolled back %s\n", version)
+	return nil
 }
 
 func ensureMigrationsTable(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version TEXT PRIMARY KEY,
+			version    TEXT        PRIMARY KEY,
 			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 	`)
 	return err
 }
 
-func listMigrations(dir string) ([]string, error) {
+func listUpMigrations(dir string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), ".sql") {
+		if !d.IsDir() && strings.HasSuffix(d.Name(), ".up.sql") {
 			files = append(files, path)
 		}
 		return nil
@@ -91,6 +129,10 @@ func listMigrations(dir string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+func versionFromUpFile(file string) string {
+	return strings.TrimSuffix(filepath.Base(file), ".up.sql")
 }
 
 func loadApplied(ctx context.Context, pool *pgxpool.Pool) (map[string]bool, error) {
@@ -111,6 +153,15 @@ func loadApplied(ctx context.Context, pool *pgxpool.Pool) (map[string]bool, erro
 	return applied, rows.Err()
 }
 
+func lastApplied(ctx context.Context, pool *pgxpool.Pool) (string, error) {
+	var version string
+	err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations ORDER BY applied_at DESC LIMIT 1`).Scan(&version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return version, err
+}
+
 func applyMigration(ctx context.Context, pool *pgxpool.Pool, version, file string) error {
 	content, err := os.ReadFile(file)
 	if err != nil {
@@ -121,14 +172,33 @@ func applyMigration(ctx context.Context, pool *pgxpool.Pool, version, file strin
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx, string(content)); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)`, version, time.Now().UTC()); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func rollbackMigration(ctx context.Context, pool *pgxpool.Pool, version, file string) error {
+	content, err := os.ReadFile(file)
+	if err != nil {
+		return fmt.Errorf("read down migration %s: %w", file, err)
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, string(content)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM schema_migrations WHERE version = $1`, version); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
