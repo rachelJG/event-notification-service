@@ -14,6 +14,7 @@ import (
 
 type Handler struct {
 	SubmitEvent appports.SubmitEventUseCase
+	GetEvent    appports.GetEventUseCase
 	Logger      *zap.Logger
 }
 
@@ -43,6 +44,7 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 	}
 
 	recordEventSubmitted(req.EventType, "success")
+	c.Header("Location", "/api/v1/events/"+id)
 	c.JSON(http.StatusAccepted, dto.SubmitEventResponse{ID: id})
 }
 
@@ -97,4 +99,22 @@ func idempotencyKeyFromContext(c *gin.Context) string {
 		}
 	}
 	return ""
+}
+
+func (h Handler) GetEventHandler(c *gin.Context) {
+	id := c.Param("id")
+	event, err := h.GetEvent.Handle(c.Request.Context(), id)
+	if err != nil {
+		h.logError(c, err)
+		httpErr := errmap.FromError(err)
+		c.JSON(httpErr.Status, gin.H{"error": errmap.Message(err), "code": httpErr.Code})
+		return
+	}
+	c.JSON(http.StatusOK, dto.GetEventResponse{
+		ID:         event.ID,
+		Type:       event.Type,
+		Payload:    event.Payload,
+		OccurredAt: event.OccurredAt,
+		CreatedAt:  event.CreatedAt,
+	})
 }

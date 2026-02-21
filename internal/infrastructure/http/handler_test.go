@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/rachelJG/event-notification-service/internal/domain/entities"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 	"go.uber.org/zap"
 )
@@ -29,6 +30,15 @@ func (m *mockSubmitEvent) Handle(ctx context.Context, eventType string, payload 
 	m.receivedType = eventType
 	m.receivedKey = idempotencyKey
 	return m.returnID, m.returnErr
+}
+
+type mockGetEvent struct {
+	returnEvent entities.Event
+	returnErr   error
+}
+
+func (m *mockGetEvent) Handle(ctx context.Context, id string) (entities.Event, error) {
+	return m.returnEvent, m.returnErr
 }
 
 func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
@@ -245,6 +255,96 @@ func testRouterOptions() RouterOptions {
 		RateLimitBurst:      1000,
 		CORSAllowAllOrigins: true,
 		CORSAllowedHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Idempotency-Key", "Authorization"},
+	}
+}
+
+func TestSubmitEventHandlerLocationHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mock := &mockSubmitEvent{returnID: "evt-abc"}
+	handler := Handler{SubmitEvent: mock, GetEvent: &mockGetEvent{}, Logger: zap.NewNop()}
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "7c9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", resp.Code)
+	}
+	loc := resp.Header().Get("Location")
+	if loc != "/api/v1/events/evt-abc" {
+		t.Fatalf("expected Location header /api/v1/events/evt-abc, got %q", loc)
+	}
+}
+
+func TestGetEventHandlerSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	evt := entities.Event{ID: "evt-1", Type: "UserRegistered", Payload: []byte(`{"user_id":"1"}`)}
+	handler := Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{returnEvent: evt}, Logger: zap.NewNop()}
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/evt-1", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if body["id"] != "evt-1" {
+		t.Fatalf("expected id evt-1, got %v", body["id"])
+	}
+	if body["type"] != "UserRegistered" {
+		t.Fatalf("expected type UserRegistered, got %v", body["type"])
+	}
+}
+
+func TestGetEventHandlerNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := Handler{
+		SubmitEvent: &mockSubmitEvent{},
+		GetEvent:    &mockGetEvent{returnErr: apperror.NotFound("event not found", nil)},
+		Logger:      zap.NewNop(),
+	}
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/missing", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.Code)
+	}
+	assertErrorCode(t, resp, "not_found")
+}
+
+func TestGetEventHandlerUnauthorized(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{}, Logger: zap.NewNop()}
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/evt-1", nil)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.Code)
 	}
 }
 
