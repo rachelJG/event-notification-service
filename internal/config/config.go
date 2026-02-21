@@ -21,8 +21,17 @@ type Config struct {
 	LogLevel string
 	// AppEnv specifies the application environment (development, staging, production)
 	AppEnv string
-	// JWTSecret is used for signing JWT tokens (required in production)
+	// JWTSecret is used for signing JWT tokens (required in production, min 32 bytes)
 	JWTSecret string
+	// JWTIssuer is the expected issuer claim (iss); validated when non-empty
+	JWTIssuer string
+	// JWTAudience is the expected audience claim (aud); validated when non-empty
+	JWTAudience string
+
+	// TLSCertFile is the path to the TLS certificate file; enables TLS when set together with TLSKeyFile
+	TLSCertFile string
+	// TLSKeyFile is the path to the TLS private key file; enables TLS when set together with TLSCertFile
+	TLSKeyFile string
 
 	// MaxBodyBytes is the maximum size of HTTP request body in bytes (default: 1MB)
 	MaxBodyBytes int64
@@ -92,7 +101,12 @@ func Load() Config {
 		PGDSN:     getenvDefault("PG_DSN", "postgres://postgres:postgres@localhost:5432/events?sslmode=disable"),
 		LogLevel:  getenvDefault("LOG_LEVEL", "info"),
 		AppEnv:    appEnv,
-		JWTSecret: os.Getenv("JWT_SECRET"),
+		JWTSecret:   os.Getenv("JWT_SECRET"),
+		JWTIssuer:   os.Getenv("JWT_ISSUER"),
+		JWTAudience: os.Getenv("JWT_AUDIENCE"),
+
+		TLSCertFile: os.Getenv("TLS_CERT_FILE"),
+		TLSKeyFile:  os.Getenv("TLS_KEY_FILE"),
 
 		MaxBodyBytes:      getenvInt64Default("MAX_BODY_BYTES", 1<<20),
 		RateLimitRPS:      getenvFloatDefault("RATE_LIMIT_RPS", 10),
@@ -121,9 +135,17 @@ func Load() Config {
 // It ensures that CORS and HSTS settings are properly configured.
 //
 // Returns an error if the configuration is invalid, or nil if valid.
+const jwtMinSecretLen = 32
+
 func (c Config) Validate() error {
 	if strings.EqualFold(c.AppEnv, "production") && strings.TrimSpace(c.JWTSecret) == "" {
 		return fmt.Errorf("invalid auth config: JWT_SECRET is required in production")
+	}
+	if strings.TrimSpace(c.JWTSecret) != "" && len(c.JWTSecret) < jwtMinSecretLen {
+		return fmt.Errorf("invalid auth config: JWT_SECRET must be at least %d bytes", jwtMinSecretLen)
+	}
+	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
+		return fmt.Errorf("invalid TLS config: TLS_CERT_FILE and TLS_KEY_FILE must both be set or both be empty")
 	}
 	if c.CORSAllowAllOrigins && len(c.CORSAllowedOrigins) > 0 {
 		return fmt.Errorf("invalid CORS config: CORS_ALLOW_ALL=true conflicts with CORS_ALLOWED_ORIGINS")
