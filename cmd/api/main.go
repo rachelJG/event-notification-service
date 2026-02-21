@@ -19,13 +19,30 @@ import (
 	"go.uber.org/zap"
 )
 
-// pgHealthChecker adapts *pgxpool.Pool to the ports.HealthChecker interface.
+// Version and Commit are injected at build time via -ldflags.
+// Example: go build -ldflags="-X main.Version=1.0.0 -X main.Commit=abc1234"
+var (
+	Version = "dev"
+	Commit  = "unknown"
+)
+
+// pgHealthChecker adapts *pgxpool.Pool to the httpadapter.HealthChecker interface.
 type pgHealthChecker struct {
 	pool *pgxpool.Pool
 }
 
 func (h pgHealthChecker) Ping(ctx context.Context) error {
 	return h.pool.Ping(ctx)
+}
+
+func (h pgHealthChecker) Stats() httpadapter.DBStats {
+	s := h.pool.Stat()
+	return httpadapter.DBStats{
+		MaxConns:      s.MaxConns(),
+		TotalConns:    s.TotalConns(),
+		IdleConns:     s.IdleConns(),
+		AcquiredConns: s.AcquiredConns(),
+	}
 }
 
 // app struct that holds the application components

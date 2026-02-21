@@ -3,8 +3,8 @@ package dto
 import "encoding/json"
 
 type SubmitEventRequest struct {
-	EventType string          `json:"event_type" binding:"required"`
-	Payload   json.RawMessage `json:"payload" binding:"required"`
+	EventType string          `json:"event_type"`
+	Payload   json.RawMessage `json:"payload"`
 }
 
 type SubmitEventResponse struct {

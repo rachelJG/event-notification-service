@@ -8,7 +8,11 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o event-service ./cmd/api
+ARG VERSION=dev
+ARG COMMIT=unknown
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-X main.Version=${VERSION} -X main.Commit=${COMMIT}" \
+    -o event-service ./cmd/api
 
 # Final stage
 FROM gcr.io/distroless/static:nonroot
