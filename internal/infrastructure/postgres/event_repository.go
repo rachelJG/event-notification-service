@@ -10,10 +10,17 @@ import (
 )
 
 type EventRepository struct {
-	Pool *pgxpool.Pool
+	Pool         *pgxpool.Pool
+	QueryTimeout time.Duration
 }
 
 func (r EventRepository) Create(ctx context.Context, event entities.Event) (string, error) {
+	if r.QueryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
+		defer cancel()
+	}
+
 	id := event.ID
 	if id == "" {
 		id = uuid.NewString()
