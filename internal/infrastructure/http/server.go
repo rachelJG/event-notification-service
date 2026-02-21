@@ -80,6 +80,10 @@ func NewRouter(handler Handler, health HealthChecker, logger *zap.Logger, opts R
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	v1 := router.Group("/api/v1")
-	v1.POST("/events", middleware.JWTAuth(opts.JWTSecret), handler.SubmitEventHandler)
+	v1.POST("/events", middleware.JWTAuth(middleware.JWTOptions{
+		Secret:   opts.JWTSecret,
+		Issuer:   opts.JWTIssuer,
+		Audience: opts.JWTAudience,
+	}), handler.SubmitEventHandler)
 	return router
 }

@@ -20,6 +20,8 @@ type HealthChecker interface {
 // This struct decouples the HTTP adapter from the application-wide config package.
 type RouterOptions struct {
 	JWTSecret           string
+	JWTIssuer           string // optional; validated when non-empty
+	JWTAudience         string // optional; validated when non-empty
 	MaxBodyBytes        int64
 	RateLimitRPS        float64
 	RateLimitBurst      int

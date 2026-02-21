@@ -47,9 +47,11 @@ func (h pgHealthChecker) Stats() httpadapter.DBStats {
 
 // app struct that holds the application components
 type app struct {
-	server *http.Server
-	db     *pgxpool.Pool
-	logger *zap.Logger
+	server      *http.Server
+	db          *pgxpool.Pool
+	logger      *zap.Logger
+	tlsCertFile string
+	tlsKeyFile  string
 }
 
 func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, error) {
@@ -74,6 +76,8 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 	health := pgHealthChecker{pool: pool}
 	opts := httpadapter.RouterOptions{
 		JWTSecret:           cfg.JWTSecret,
+		JWTIssuer:           cfg.JWTIssuer,
+		JWTAudience:         cfg.JWTAudience,
 		MaxBodyBytes:        cfg.MaxBodyBytes,
 		RateLimitRPS:        cfg.RateLimitRPS,
 		RateLimitBurst:      cfg.RateLimitBurst,
@@ -94,7 +98,7 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		IdleTimeout:       cfg.IdleTimeout,
 	}
 
-	return &app{server: server, db: pool, logger: log}, nil
+	return &app{server: server, db: pool, logger: log, tlsCertFile: cfg.TLSCertFile, tlsKeyFile: cfg.TLSKeyFile}, nil
 }
 
 func (a *app) shutdown(ctx context.Context) error {
@@ -127,8 +131,14 @@ func main() {
 
 	go func() {
 		application.logger.Info("api listening", zap.String("addr", cfg.APIAddr))
-		if err := application.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			application.logger.Fatal("server error", zap.Error(err))
+		var serveErr error
+		if application.tlsCertFile != "" {
+			serveErr = application.server.ListenAndServeTLS(application.tlsCertFile, application.tlsKeyFile)
+		} else {
+			serveErr = application.server.ListenAndServe()
+		}
+		if serveErr != nil && serveErr != http.ErrServerClosed {
+			application.logger.Fatal("server error", zap.Error(serveErr))
 		}
 	}()
 
