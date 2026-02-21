@@ -2,14 +2,11 @@ package usecases
 
 import (
 	"context"
-	"errors"
-	"slices"
-	"strings"
 
 	"github.com/rachelJG/event-notification-service/internal/application/validation"
+	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 	"github.com/rachelJG/event-notification-service/internal/domain/entities"
 	"github.com/rachelJG/event-notification-service/internal/domain/ports"
-	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 )
 
 type SubmitEvent struct {
@@ -17,16 +14,6 @@ type SubmitEvent struct {
 }
 
 func (uc SubmitEvent) Handle(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
-
-	if strings.TrimSpace(eventType) == "" {
-		return "", errors.New("event_type is required")
-	}
-	if !slices.Contains(entities.ValidEventTypes(), eventType) {
-		return "", errors.New("unsupported event_type")
-	}
-	if strings.TrimSpace(idempotencyKey) == "" {
-		return "", errors.New("idempotency_key is required")
-	}
 
 	if err := validation.ValidateEvent(eventType, payload); err != nil {
 		return "", apperror.InvalidArgument(err.Error(), err)
@@ -38,7 +25,7 @@ func (uc SubmitEvent) Handle(ctx context.Context, eventType string, payload []by
 
 	id, err := uc.Repo.Create(ctx, event)
 	if err != nil {
-		return "", apperror.Internal("failed to persist event", err)
+		return "", err
 	}
 	return id, nil
 }
