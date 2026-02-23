@@ -14,8 +14,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-X main.Version=${VERSION} -X main.Commit=${COMMIT}" \
     -o event-service ./cmd/api
 
-# Final stage
-FROM gcr.io/distroless/static:nonroot
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-X main.Version=${VERSION} -X main.Commit=${COMMIT}" \
+    -o worker ./cmd/worker
+
+# API stage
+FROM gcr.io/distroless/static:nonroot AS api
 
 WORKDIR /
 
@@ -24,3 +28,14 @@ COPY --from=builder /app/event-service /event-service
 USER 65532:65532
 
 ENTRYPOINT ["/event-service"]
+
+# Worker stage
+FROM gcr.io/distroless/static:nonroot AS worker
+
+WORKDIR /
+
+COPY --from=builder /app/worker /worker
+
+USER 65532:65532
+
+ENTRYPOINT ["/worker"]
