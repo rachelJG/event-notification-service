@@ -90,6 +90,11 @@ type Config struct {
 	WorkerBatchSize int
 	// WorkerMaxRetries is the maximum number of delivery attempts per notification (default: 5)
 	WorkerMaxRetries int
+
+	// TrustedProxies is the list of trusted proxy CIDRs/IPs for extracting real client IPs (env: TRUSTED_PROXIES, CSV)
+	TrustedProxies []string
+	// ShutdownTimeout is the maximum time to wait for graceful shutdown (default: 15s)
+	ShutdownTimeout time.Duration
 }
 
 // Load loads the application configuration from environment variables with sensible defaults.
@@ -159,6 +164,9 @@ func Load() Config {
 		WorkerDeliverInterval: getenvDurationSecondsDefault("WORKER_DELIVER_INTERVAL", 3),
 		WorkerBatchSize:       getenvIntDefault("WORKER_BATCH_SIZE", 50),
 		WorkerMaxRetries:      getenvIntDefault("WORKER_MAX_RETRIES", 5),
+
+		TrustedProxies:  getenvCSVDefault("TRUSTED_PROXIES", nil),
+		ShutdownTimeout: getenvDurationSecondsDefault("SHUTDOWN_TIMEOUT", 15),
 	}
 }
 
@@ -186,6 +194,18 @@ func (c Config) Validate() error {
 	}
 	if c.EnableHSTS && c.HSTSMaxAgeSeconds <= 0 {
 		return fmt.Errorf("invalid HSTS config: HSTS_MAX_AGE_SECONDS must be > 0")
+	}
+	if c.RateLimitRPS <= 0 {
+		return fmt.Errorf("invalid rate limit config: RATE_LIMIT_RPS must be > 0")
+	}
+	if c.RateLimitBurst <= 0 {
+		return fmt.Errorf("invalid rate limit config: RATE_LIMIT_BURST must be > 0")
+	}
+	if c.MaxBodyBytes <= 0 {
+		return fmt.Errorf("invalid body limit config: MAX_BODY_BYTES must be > 0")
+	}
+	if c.DBQueryTimeout <= 0 {
+		return fmt.Errorf("invalid DB config: DB_QUERY_TIMEOUT must be > 0")
 	}
 	if strings.EqualFold(c.AppEnv, "production") && strings.TrimSpace(c.SMTPHost) == "" {
 		return fmt.Errorf("invalid SMTP config: SMTP_HOST is required in production")

@@ -47,11 +47,12 @@ func (h pgHealthChecker) Stats() httpadapter.DBStats {
 
 // app struct that holds the application components
 type app struct {
-	server      *http.Server
-	db          *pgxpool.Pool
-	logger      *zap.Logger
-	tlsCertFile string
-	tlsKeyFile  string
+	server          *http.Server
+	db              *pgxpool.Pool
+	logger          *zap.Logger
+	tlsCertFile     string
+	tlsKeyFile      string
+	shutdownTimeout time.Duration
 }
 
 func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, error) {
@@ -87,6 +88,9 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		CORSAllowedHeaders:  cfg.CORSAllowedHeaders,
 		EnableHSTS:          cfg.EnableHSTS,
 		HSTSMaxAgeSeconds:   cfg.HSTSMaxAgeSeconds,
+		Version:             Version,
+		Commit:              Commit,
+		TrustedProxies:      cfg.TrustedProxies,
 	}
 
 	router := httpadapter.NewRouter(handler, health, log, opts)
@@ -99,11 +103,12 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		IdleTimeout:       cfg.IdleTimeout,
 	}
 
-	return &app{server: server, db: pool, logger: log, tlsCertFile: cfg.TLSCertFile, tlsKeyFile: cfg.TLSKeyFile}, nil
+	return &app{server: server, db: pool, logger: log, tlsCertFile: cfg.TLSCertFile, tlsKeyFile: cfg.TLSKeyFile, shutdownTimeout: cfg.ShutdownTimeout}, nil
 }
 
 func (a *app) shutdown(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	inner := max(a.shutdownTimeout-5*time.Second, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, inner)
 	defer cancel()
 
 	err := a.server.Shutdown(ctx)
@@ -151,7 +156,7 @@ func waitForShutdown(application *app) {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), application.shutdownTimeout)
 	defer cancel()
 
 	if err := application.shutdown(ctx); err != nil {
