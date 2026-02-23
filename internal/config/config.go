@@ -81,6 +81,15 @@ type Config struct {
 	SMTPPassword string
 	// SMTPFrom is the sender email address (required when SMTPHost is set)
 	SMTPFrom string
+
+	// WorkerProcessInterval is the interval between event processing cycles (default: 5s)
+	WorkerProcessInterval time.Duration
+	// WorkerDeliverInterval is the interval between notification delivery cycles (default: 3s)
+	WorkerDeliverInterval time.Duration
+	// WorkerBatchSize is the maximum number of items to process per cycle (default: 50)
+	WorkerBatchSize int
+	// WorkerMaxRetries is the maximum number of delivery attempts per notification (default: 5)
+	WorkerMaxRetries int
 }
 
 // Load loads the application configuration from environment variables with sensible defaults.
@@ -145,6 +154,11 @@ func Load() Config {
 		SMTPUser:     getenvDefault("SMTP_USER", ""),
 		SMTPPassword: os.Getenv("SMTP_PASSWORD"),
 		SMTPFrom:     getenvDefault("SMTP_FROM", ""),
+
+		WorkerProcessInterval: getenvDurationSecondsDefault("WORKER_PROCESS_INTERVAL", 5),
+		WorkerDeliverInterval: getenvDurationSecondsDefault("WORKER_DELIVER_INTERVAL", 3),
+		WorkerBatchSize:       getenvIntDefault("WORKER_BATCH_SIZE", 50),
+		WorkerMaxRetries:      getenvIntDefault("WORKER_MAX_RETRIES", 5),
 	}
 }
 
