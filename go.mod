@@ -1,6 +1,6 @@
 module github.com/rachelJG/event-notification-service
 
-go 1.24.0
+go 1.24.4
 
 require (
 	github.com/gin-contrib/cors v1.7.6
