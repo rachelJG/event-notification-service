@@ -1,4 +1,4 @@
-.PHONY: build lint test test-integration migrate migrate-down docs
+.PHONY: build build-worker lint test test-integration migrate migrate-down docs run-worker
 
 GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint
 GOCACHE ?= /tmp/go-build
@@ -14,6 +14,18 @@ build:
 	GOMODCACHE=$(GOMODCACHE) \
 	GOPATH=$(GOPATH) \
 	go build $(LDFLAGS) -o event-service ./cmd/api
+
+build-worker:
+	GOCACHE=$(GOCACHE) \
+	GOMODCACHE=$(GOMODCACHE) \
+	GOPATH=$(GOPATH) \
+	go build $(LDFLAGS) -o bin/worker ./cmd/worker
+
+run-worker:
+	GOCACHE=$(GOCACHE) \
+	GOMODCACHE=$(GOMODCACHE) \
+	GOPATH=$(GOPATH) \
+	go run ./cmd/worker
 
 lint:
 	GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE) \
