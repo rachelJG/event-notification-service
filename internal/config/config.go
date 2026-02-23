@@ -138,8 +138,8 @@ func Load() Config {
 
 		DBQueryTimeout:        getenvDurationSecondsDefault("DB_QUERY_TIMEOUT", 5),
 
-		DBPoolMaxConns:        int32(getenvIntDefault("DB_POOL_MAX_CONNS", 10)),
-		DBPoolMinConns:        int32(getenvIntDefault("DB_POOL_MIN_CONNS", 2)),
+		DBPoolMaxConns:        getenvInt32Default("DB_POOL_MAX_CONNS", 10),
+		DBPoolMinConns:        getenvInt32Default("DB_POOL_MIN_CONNS", 2),
 		DBPoolMaxConnLifetime: getenvDurationSecondsDefault("DB_POOL_MAX_CONN_LIFETIME", 3600),
 		DBPoolMaxConnIdleTime: getenvDurationSecondsDefault("DB_POOL_MAX_CONN_IDLE_TIME", 1800),
 
@@ -214,6 +214,18 @@ func getenvIntDefault(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func getenvInt32Default(key string, fallback int32) int32 {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return fallback
+	}
+	return int32(parsed)
 }
 
 func getenvInt64Default(key string, fallback int64) int64 {
