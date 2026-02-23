@@ -32,4 +32,5 @@ type RouterOptions struct {
 	HSTSMaxAgeSeconds   int
 	Version             string
 	Commit              string
+	TrustedProxies      []string
 }

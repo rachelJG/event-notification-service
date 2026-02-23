@@ -1,8 +1,9 @@
 package middleware
 
 import (
-	"net"
+	"math"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -20,6 +21,8 @@ func RateLimit(requestsPerSecond float64, burst int) gin.HandlerFunc {
 		mu       sync.Mutex
 		visitors = make(map[string]*ipLimiter)
 	)
+
+	retryAfter := strconv.Itoa(int(math.Ceil(1.0 / requestsPerSecond)))
 
 	// cleanup goroutine to avoid unbounded growth
 	go func() {
@@ -51,23 +54,13 @@ func RateLimit(requestsPerSecond float64, burst int) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		ip := clientIP(c.Request)
-		if ip == "" {
-			ip = c.ClientIP()
-		}
+		ip := c.ClientIP()
 		limiter := getLimiter(ip)
 		if !limiter.Allow() {
+			c.Header("Retry-After", retryAfter)
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded", "code": "rate_limited", "request_id": c.GetString("request_id")})
 			return
 		}
 		c.Next()
 	}
-}
-
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return ""
-	}
-	return host
 }

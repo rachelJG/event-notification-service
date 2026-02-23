@@ -14,6 +14,9 @@ import (
 
 func NewRouter(handler Handler, health HealthChecker, logger *zap.Logger, opts RouterOptions) *gin.Engine {
 	router := gin.New()
+	if err := router.SetTrustedProxies(opts.TrustedProxies); err != nil && logger != nil {
+		logger.Warn("failed to set trusted proxies", zap.Error(err))
+	}
 	router.Use(ginzap.Ginzap(logger, "", true))
 	router.Use(ginzap.RecoveryWithZap(logger, true))
 	router.Use(middleware.RequestID())
@@ -89,6 +92,10 @@ func NewRouter(handler Handler, health HealthChecker, logger *zap.Logger, opts R
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	v1 := router.Group("/api/v1")
+	v1.Use(func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Next()
+	})
 	jwtAuth := middleware.JWTAuth(middleware.JWTOptions{
 		Secret:   opts.JWTSecret,
 		Issuer:   opts.JWTIssuer,
