@@ -12,6 +12,7 @@ import (
 type ProcessEvents struct {
 	EventRepo        ports.EventRepository
 	NotificationRepo ports.NotificationRepository
+	Renderer         ports.EmailRenderer
 	BatchSize        int
 }
 
@@ -29,7 +30,11 @@ func (uc ProcessEvents) Handle(ctx context.Context) (int, error) {
 			continue
 		}
 
-		subject, body := renderEmail(evt)
+		subject, body, err := uc.Renderer.Render(evt)
+		if err != nil {
+			_ = uc.EventRepo.SetStatus(ctx, evt.ID, "failed")
+			continue
+		}
 
 		n, err := entities.NewNotification(evt.ID, entities.ChannelEmail, recipient, subject, body)
 		if err != nil {
@@ -81,29 +86,5 @@ func extractRecipient(evt entities.Event) (string, error) {
 		return p.Email, nil
 	default:
 		return "", fmt.Errorf("unsupported event type: %s", evt.Type)
-	}
-}
-
-// renderEmail returns a subject and body for the notification based on event type and payload.
-func renderEmail(evt entities.Event) (subject, body string) {
-	switch evt.Type {
-	case entities.EventTypeUserRegistered:
-		var p entities.UserRegisteredPayload
-		_ = json.Unmarshal(evt.Payload, &p)
-		return "Welcome, " + p.Name, fmt.Sprintf("Hello %s, your account has been created successfully.", p.Name)
-	case entities.EventTypePasswordResetRequested:
-		var p entities.PasswordResetRequestedPayload
-		_ = json.Unmarshal(evt.Payload, &p)
-		return "Reset your password", fmt.Sprintf("A password reset was requested for your account (user %s).", p.UserID)
-	case entities.EventTypeOrderPaid:
-		var p entities.OrderPaidPayload
-		_ = json.Unmarshal(evt.Payload, &p)
-		return fmt.Sprintf("Payment confirmation #%s", p.OrderID), fmt.Sprintf("Your payment of %.2f %s for order %s has been confirmed.", p.Amount, p.Currency, p.OrderID)
-	case entities.EventTypeOrderShipped:
-		var p entities.OrderShippedPayload
-		_ = json.Unmarshal(evt.Payload, &p)
-		return fmt.Sprintf("Your order #%s has been shipped", p.OrderID), fmt.Sprintf("Your order %s has been shipped via %s. Tracking number: %s.", p.OrderID, p.Carrier, p.TrackingNumber)
-	default:
-		return "Notification", "You have a new notification."
 	}
 }

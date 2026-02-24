@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rachelJG/event-notification-service/internal/application/usecases"
 	"github.com/rachelJG/event-notification-service/internal/config"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/email"
@@ -58,13 +61,17 @@ func main() {
 		log.Fatal("connect to database", zap.Error(err))
 	}
 
+	prometheus.MustRegister(postgres.NewPoolStatsCollector(pool))
+
 	eventRepo := postgres.EventRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
 	notifRepo := postgres.NotificationRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
 	sender := email.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPassword, cfg.SMTPFrom)
+	renderer := email.NewTemplateRenderer()
 
 	processUC := usecases.ProcessEvents{
 		EventRepo:        eventRepo,
 		NotificationRepo: notifRepo,
+		Renderer:         renderer,
 		BatchSize:        cfg.WorkerBatchSize,
 	}
 	deliverUC := usecases.DeliverNotifications{
@@ -72,6 +79,17 @@ func main() {
 		Sender:           sender,
 		BatchSize:        cfg.WorkerBatchSize,
 	}
+
+	// Metrics server on port 9090
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsServer := &http.Server{Addr: ":9090", Handler: metricsMux, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		log.Info("metrics server listening", zap.String("addr", ":9090"))
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("metrics server error", zap.Error(err))
+		}
+	}()
 
 	var wg sync.WaitGroup
 
@@ -81,9 +99,12 @@ func main() {
 		runLoop(ctx, log, "process", cfg.WorkerProcessInterval, func(ctx context.Context) {
 			count, err := processUC.Handle(ctx)
 			if err != nil {
+				workerCyclesTotal.WithLabelValues("process", "error").Inc()
 				log.Error("process events error", zap.Error(err))
 				return
 			}
+			workerCyclesTotal.WithLabelValues("process", "success").Inc()
+			eventsProcessedTotal.WithLabelValues("success").Add(float64(count))
 			if count > 0 {
 				log.Info("processed events", zap.Int("count", count))
 			}
@@ -96,9 +117,12 @@ func main() {
 		runLoop(ctx, log, "deliver", cfg.WorkerDeliverInterval, func(ctx context.Context) {
 			count, err := deliverUC.Handle(ctx)
 			if err != nil {
+				workerCyclesTotal.WithLabelValues("deliver", "error").Inc()
 				log.Error("deliver notifications error", zap.Error(err))
 				return
 			}
+			workerCyclesTotal.WithLabelValues("deliver", "success").Inc()
+			notificationsDeliveredTotal.WithLabelValues("email", "success").Add(float64(count))
 			if count > 0 {
 				log.Info("delivered notifications", zap.Int("count", count))
 			}
@@ -112,6 +136,7 @@ func main() {
 
 	cancel()
 	wg.Wait()
+	_ = metricsServer.Shutdown(context.Background())
 	pool.Close()
 	log.Info("worker stopped")
 }

@@ -18,34 +18,31 @@ import (
 	"go.uber.org/zap"
 )
 
-type mockSubmitEvent struct {
-	called       bool
-	returnID     string
-	returnErr    error
-	receivedType string
-	receivedKey  string
+type mockEventService struct {
+	submitCalled       bool
+	submitReturnID     string
+	submitReturnErr    error
+	submitReceivedType string
+	submitReceivedKey  string
+	getReturnEvent     entities.Event
+	getReturnErr       error
 }
 
-func (m *mockSubmitEvent) Handle(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
-	m.called = true
-	m.receivedType = eventType
-	m.receivedKey = idempotencyKey
-	return m.returnID, m.returnErr
+func (m *mockEventService) SubmitEvent(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
+	m.submitCalled = true
+	m.submitReceivedType = eventType
+	m.submitReceivedKey = idempotencyKey
+	return m.submitReturnID, m.submitReturnErr
 }
 
-type mockGetEvent struct {
-	returnEvent entities.Event
-	returnErr   error
-}
-
-func (m *mockGetEvent) Handle(ctx context.Context, id string) (entities.Event, error) {
-	return m.returnEvent, m.returnErr
+func (m *mockEventService) GetEvent(ctx context.Context, id string) (entities.Event, error) {
+	return m.getReturnEvent, m.getReturnErr
 }
 
 func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnID: "evt-1"}
-	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnID: "evt-1"}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -59,7 +56,7 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.Code)
 	}
-	if mock.called {
+	if mock.submitCalled {
 		t.Fatalf("expected use case not to be called")
 	}
 	assertErrorCode(t, resp, "invalid_argument")
@@ -67,8 +64,8 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 
 func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnID: "evt-1"}
-	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnID: "evt-1"}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -83,7 +80,7 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.Code)
 	}
-	if mock.called {
+	if mock.submitCalled {
 		t.Fatalf("expected use case not to be called")
 	}
 	assertErrorCode(t, resp, "invalid_argument")
@@ -91,8 +88,8 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 
 func TestSubmitEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnID: "evt-1"}
-	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnID: "evt-1"}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -107,10 +104,10 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	if resp.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d", resp.Code)
 	}
-	if !mock.called {
+	if !mock.submitCalled {
 		t.Fatalf("expected use case to be called")
 	}
-	if mock.receivedKey != "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a" {
+	if mock.submitReceivedKey != "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a" {
 		t.Fatalf("expected idempotency key to be passed to use case")
 	}
 
@@ -125,8 +122,8 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 
 func TestSubmitEventHandlerUseCaseError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnErr: apperror.InvalidArgument("bad event", nil)}
-	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnErr: apperror.InvalidArgument("bad event", nil)}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -145,8 +142,8 @@ func TestSubmitEventHandlerUseCaseError(t *testing.T) {
 
 func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnID: "evt-1"}
-	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnID: "evt-1"}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -160,15 +157,15 @@ func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
 	if resp.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", resp.Code)
 	}
-	if mock.called {
+	if mock.submitCalled {
 		t.Fatalf("expected use case not to be called")
 	}
 }
 
 func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnID: "evt-1"}
-	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnID: "evt-1"}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -183,15 +180,15 @@ func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	if resp.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("expected 415, got %d", resp.Code)
 	}
-	if mock.called {
+	if mock.submitCalled {
 		t.Fatalf("expected use case not to be called")
 	}
 }
 
 func TestSubmitEventRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnID: "evt-1"}
-	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnID: "evt-1"}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	opts := testRouterOptions()
 	opts.RateLimitRPS = 1
 	opts.RateLimitBurst = 1
@@ -264,8 +261,8 @@ func testRouterOptions() RouterOptions {
 
 func TestSubmitEventHandlerLocationHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnID: "evt-abc"}
-	handler := Handler{SubmitEvent: mock, GetEvent: &mockGetEvent{}, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnID: "evt-abc"}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
@@ -289,7 +286,7 @@ func TestSubmitEventHandlerLocationHeader(t *testing.T) {
 func TestGetEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	evt := entities.Event{ID: "evt-1", Type: "UserRegistered", Payload: []byte(`{"user_id":"1"}`)}
-	handler := Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{returnEvent: evt}, Logger: zap.NewNop()}
+	handler := Handler{EventService: &mockEventService{getReturnEvent: evt}, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/evt-1", nil)
@@ -317,9 +314,8 @@ func TestGetEventHandlerSuccess(t *testing.T) {
 func TestGetEventHandlerNotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler := Handler{
-		SubmitEvent: &mockSubmitEvent{},
-		GetEvent:    &mockGetEvent{returnErr: apperror.NotFound("event not found", nil)},
-		Logger:      zap.NewNop(),
+		EventService: &mockEventService{getReturnErr: apperror.NotFound("event not found", nil)},
+		Logger:       zap.NewNop(),
 	}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
@@ -338,7 +334,7 @@ func TestGetEventHandlerNotFound(t *testing.T) {
 
 func TestGetEventHandlerUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{}, Logger: zap.NewNop()}
+	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/evt-1", nil)
@@ -364,7 +360,7 @@ func (m *mockHealthChecker) Stats() DBStats               { return DBStats{MaxCo
 func TestLivenessAlwaysOK(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	// health=nil: liveness must not touch the DB
-	router := NewRouter(Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{}}, nil, zap.NewNop(), testRouterOptions())
+	router := NewRouter(Handler{EventService: &mockEventService{}}, nil, zap.NewNop(), testRouterOptions())
 	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -376,7 +372,7 @@ func TestLivenessAlwaysOK(t *testing.T) {
 func TestReadinessOKWhenDBUp(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := NewRouter(
-		Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{}},
+		Handler{EventService: &mockEventService{}},
 		&mockHealthChecker{}, zap.NewNop(), testRouterOptions(),
 	)
 	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -397,7 +393,7 @@ func TestReadinessOKWhenDBUp(t *testing.T) {
 func TestReadiness503WhenDBDown(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := NewRouter(
-		Handler{SubmitEvent: &mockSubmitEvent{}, GetEvent: &mockGetEvent{}},
+		Handler{EventService: &mockEventService{}},
 		&mockHealthChecker{pingErr: errors.New("connection refused")}, zap.NewNop(), testRouterOptions(),
 	)
 	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
@@ -408,10 +404,58 @@ func TestReadiness503WhenDBDown(t *testing.T) {
 	}
 }
 
+func TestReadiness503WhenHealthCheckerNil(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := NewRouter(
+		Handler{EventService: &mockEventService{}},
+		nil, zap.NewNop(), testRouterOptions(),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
+	}
+}
+
+func TestReadinessReturnsVersionAndDBStats(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	opts := testRouterOptions()
+	opts.Version = "1.0.0"
+	opts.Commit = "abc123"
+	router := NewRouter(
+		Handler{EventService: &mockEventService{}},
+		&mockHealthChecker{}, zap.NewNop(), opts,
+	)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if body["version"] != "1.0.0" {
+		t.Errorf("expected version 1.0.0, got %v", body["version"])
+	}
+	if body["commit"] != "abc123" {
+		t.Errorf("expected commit abc123, got %v", body["commit"])
+	}
+	db, ok := body["db"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected db stats object in response")
+	}
+	if db["max_conns"] != float64(10) {
+		t.Errorf("expected max_conns 10, got %v", db["max_conns"])
+	}
+}
+
 func TestEventsSubmittedMetricSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnID: "evt-1"}
-	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnID: "evt-1"}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	// Reset counter state by reading current value before the request
@@ -434,10 +478,32 @@ func TestEventsSubmittedMetricSuccess(t *testing.T) {
 	}
 }
 
+func TestHTTPErrorsMetricIncremented(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mock := &mockEventService{submitReturnErr: apperror.InvalidArgument("bad event", nil)}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+
+	before := testutil.ToFloat64(httpErrorsTotal.WithLabelValues("invalid_argument"))
+
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91d")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	after := testutil.ToFloat64(httpErrorsTotal.WithLabelValues("invalid_argument"))
+	if after-before != 1 {
+		t.Fatalf("expected http_errors_total{invalid_argument} to increment by 1, got %v", after-before)
+	}
+}
+
 func TestEventsSubmittedMetricError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mock := &mockSubmitEvent{returnErr: apperror.InvalidArgument("bad event", nil)}
-	handler := Handler{SubmitEvent: mock, Logger: zap.NewNop()}
+	mock := &mockEventService{submitReturnErr: apperror.InvalidArgument("bad event", nil)}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
 	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
 
 	before := testutil.ToFloat64(eventsSubmittedTotal.WithLabelValues("UserRegistered", "error"))

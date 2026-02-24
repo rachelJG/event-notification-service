@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
+	"go.uber.org/zap"
 )
 
 // ContextKeySubject is the gin context key where the JWT subject claim is stored.
@@ -17,6 +18,7 @@ type JWTOptions struct {
 	Secret   string
 	Issuer   string // optional; validated when non-empty
 	Audience string // optional; validated when non-empty
+	Logger   *zap.Logger
 }
 
 // JWTAuth validates a Bearer JWT using HS256. It enforces expiry, not-before,
@@ -53,10 +55,26 @@ func JWTAuth(opts JWTOptions) gin.HandlerFunc {
 			return []byte(opts.Secret), nil
 		}, parserOpts...)
 		if err != nil {
+			if opts.Logger != nil {
+				opts.Logger.Warn("auth failed",
+					zap.String("event", "auth"),
+					zap.String("reason", err.Error()),
+					zap.String("remote_ip", c.ClientIP()),
+					zap.String("request_id", c.GetString("request_id")),
+				)
+			}
 			writeAuthError(c, apperror.Unauthenticated("invalid token", err))
 			return
 		}
 
+		if opts.Logger != nil {
+			opts.Logger.Info("auth success",
+				zap.String("event", "auth"),
+				zap.String("sub", claims.Subject),
+				zap.String("remote_ip", c.ClientIP()),
+				zap.String("request_id", c.GetString("request_id")),
+			)
+		}
 		c.Set(ContextKeySubject, claims.Subject)
 		c.Next()
 	}

@@ -13,9 +13,8 @@ import (
 )
 
 type Handler struct {
-	SubmitEvent appports.SubmitEventUseCase
-	GetEvent    appports.GetEventUseCase
-	Logger      *zap.Logger
+	EventService appports.EventService
+	Logger       *zap.Logger
 }
 
 const idempotencyHeader = "Idempotency-Key"
@@ -43,11 +42,12 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 	c.Set("event_type", req.EventType)
 	c.Set("idempotency_key", c.GetHeader(idempotencyHeader))
 
-	id, err := h.SubmitEvent.Handle(c.Request.Context(), req.EventType, req.Payload, c.GetHeader(idempotencyHeader))
+	id, err := h.EventService.SubmitEvent(c.Request.Context(), req.EventType, req.Payload, c.GetHeader(idempotencyHeader))
 	if err != nil {
 		recordEventSubmitted(req.EventType, "error")
 		h.logError(c, err)
 		httpErr := errmap.FromError(err)
+		recordHTTPError(httpErr.Code)
 		errorJSON(c, httpErr.Status, httpErr.Code, errmap.Message(err))
 		return
 	}
@@ -112,10 +112,11 @@ func idempotencyKeyFromContext(c *gin.Context) string {
 
 func (h Handler) GetEventHandler(c *gin.Context) {
 	id := c.Param("id")
-	event, err := h.GetEvent.Handle(c.Request.Context(), id)
+	event, err := h.EventService.GetEvent(c.Request.Context(), id)
 	if err != nil {
 		h.logError(c, err)
 		httpErr := errmap.FromError(err)
+		recordHTTPError(httpErr.Code)
 		errorJSON(c, httpErr.Status, httpErr.Code, errmap.Message(err))
 		return
 	}
