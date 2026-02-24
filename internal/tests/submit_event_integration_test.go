@@ -43,14 +43,15 @@ func newTestPool(t *testing.T) (*pgxpool.Pool, context.Context) {
 	if err != nil {
 		t.Fatalf("ensure events table: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `TRUNCATE TABLE events`); err != nil {
+	// TRUNCATE CASCADE handles foreign key constraints from notifications table
+	if _, err := pool.Exec(ctx, `TRUNCATE TABLE events CASCADE`); err != nil {
 		t.Fatalf("truncate events: %v", err)
 	}
 	return pool, ctx
 }
 
-func newSubmitEventUseCase(pool *pgxpool.Pool) usecases.SubmitEvent {
-	return usecases.SubmitEvent{Repo: postgres.EventRepository{Pool: pool}}
+func newSubmitEventUseCase(pool *pgxpool.Pool) usecases.EventService {
+	return usecases.EventService{Repo: postgres.EventRepository{Pool: pool}}
 }
 
 // TestSubmitEventAllEventTypes verifies that all supported event types can be
@@ -93,7 +94,7 @@ func TestSubmitEventAllEventTypes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			id, err := uc.Handle(ctx, tc.eventType, tc.payload, tc.idempotencyKey)
+			id, err := uc.SubmitEvent(ctx, tc.eventType, tc.payload, tc.idempotencyKey)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -121,12 +122,12 @@ func TestSubmitEventIdempotency(t *testing.T) {
 	payload := mustMarshal(t, entities.UserRegisteredPayload{UserID: "u1", Email: "u@test.com", Name: "Test"})
 	key := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
-	id1, err := uc.Handle(ctx, entities.EventTypeUserRegistered, payload, key)
+	id1, err := uc.SubmitEvent(ctx, entities.EventTypeUserRegistered, payload, key)
 	if err != nil {
 		t.Fatalf("first submit: %v", err)
 	}
 
-	id2, err := uc.Handle(ctx, entities.EventTypeUserRegistered, payload, key)
+	id2, err := uc.SubmitEvent(ctx, entities.EventTypeUserRegistered, payload, key)
 	if err != nil {
 		t.Fatalf("second submit: %v", err)
 	}
@@ -152,7 +153,7 @@ func TestSubmitEventSameKeyDifferentType(t *testing.T) {
 
 	key := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
-	id1, err := uc.Handle(ctx, entities.EventTypeOrderPaid,
+	id1, err := uc.SubmitEvent(ctx, entities.EventTypeOrderPaid,
 		mustMarshal(t, entities.OrderPaidPayload{OrderID: "o1", UserID: "u1", Amount: 10, Currency: "USD"}),
 		key,
 	)
@@ -160,7 +161,7 @@ func TestSubmitEventSameKeyDifferentType(t *testing.T) {
 		t.Fatalf("OrderPaid submit: %v", err)
 	}
 
-	id2, err := uc.Handle(ctx, entities.EventTypeOrderShipped,
+	id2, err := uc.SubmitEvent(ctx, entities.EventTypeOrderShipped,
 		mustMarshal(t, entities.OrderShippedPayload{OrderID: "o1", UserID: "u1", Carrier: "DHL", TrackingNumber: "TRK1"}),
 		key,
 	)
@@ -189,7 +190,7 @@ func TestSubmitEventInvalidPayloadNotPersisted(t *testing.T) {
 
 	// missing required user_id
 	payload := []byte(`{"user_id":"","email":"u@test.com","name":"Test"}`)
-	_, err := uc.Handle(ctx, entities.EventTypeUserRegistered, payload, "cccccccc-cccc-cccc-cccc-cccccccccccc")
+	_, err := uc.SubmitEvent(ctx, entities.EventTypeUserRegistered, payload, "cccccccc-cccc-cccc-cccc-cccccccccccc")
 	if err == nil {
 		t.Fatal("expected validation error for invalid payload")
 	}
@@ -214,7 +215,7 @@ func TestSubmitEventUnsupportedTypeNotPersisted(t *testing.T) {
 	pool, ctx := newTestPool(t)
 	uc := newSubmitEventUseCase(pool)
 
-	_, err := uc.Handle(ctx, "UnknownEvent", []byte(`{}`), "dddddddd-dddd-dddd-dddd-dddddddddddd")
+	_, err := uc.SubmitEvent(ctx, "UnknownEvent", []byte(`{}`), "dddddddd-dddd-dddd-dddd-dddddddddddd")
 	if err == nil {
 		t.Fatal("expected error for unsupported event type")
 	}
@@ -235,7 +236,7 @@ func TestSubmitEventEmptyIdempotencyKeyRejected(t *testing.T) {
 	uc := newSubmitEventUseCase(pool)
 
 	payload := mustMarshal(t, entities.UserRegisteredPayload{UserID: "u1", Email: "u@test.com", Name: "Test"})
-	_, err := uc.Handle(ctx, entities.EventTypeUserRegistered, payload, "")
+	_, err := uc.SubmitEvent(ctx, entities.EventTypeUserRegistered, payload, "")
 	if err == nil {
 		t.Fatal("expected error for empty idempotency key")
 	}

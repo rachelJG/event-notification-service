@@ -42,7 +42,8 @@ func TestPostgresEventRepositoryCreate(t *testing.T) {
 		t.Fatalf("ensure events table: %v", err)
 	}
 
-	_, err = pool.Exec(ctx, `TRUNCATE TABLE events`)
+	// TRUNCATE CASCADE handles foreign key constraints from notifications table
+	_, err = pool.Exec(ctx, `TRUNCATE TABLE events CASCADE`)
 	if err != nil {
 		t.Fatalf("truncate events: %v", err)
 	}
