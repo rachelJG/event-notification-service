@@ -100,6 +100,7 @@ func NewRouter(handler Handler, health HealthChecker, logger *zap.Logger, opts R
 		Secret:   opts.JWTSecret,
 		Issuer:   opts.JWTIssuer,
 		Audience: opts.JWTAudience,
+		Logger:   logger,
 	})
 	v1.POST("/events", jwtAuth, handler.SubmitEventHandler)
 	v1.GET("/events/:id", jwtAuth, handler.GetEventHandler)

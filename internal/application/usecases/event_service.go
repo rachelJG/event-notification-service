@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"context"
+	"strings"
 
 	"github.com/rachelJG/event-notification-service/internal/application/validation"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
@@ -9,12 +10,13 @@ import (
 	"github.com/rachelJG/event-notification-service/internal/domain/ports"
 )
 
-type SubmitEvent struct {
+// EventService implements all event-related use cases.
+type EventService struct {
 	Repo ports.EventRepository
 }
 
-func (uc SubmitEvent) Handle(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
-
+// SubmitEvent validates and persists a new event.
+func (s EventService) SubmitEvent(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
 	if err := validation.ValidateEvent(eventType, payload); err != nil {
 		return "", apperror.InvalidArgument(err.Error(), err)
 	}
@@ -23,9 +25,17 @@ func (uc SubmitEvent) Handle(ctx context.Context, eventType string, payload []by
 		return "", apperror.InvalidArgument(err.Error(), err)
 	}
 
-	id, err := uc.Repo.Create(ctx, event)
+	id, err := s.Repo.Create(ctx, event)
 	if err != nil {
 		return "", err
 	}
 	return id, nil
+}
+
+// GetEvent retrieves an event by its ID.
+func (s EventService) GetEvent(ctx context.Context, id string) (entities.Event, error) {
+	if strings.TrimSpace(id) == "" {
+		return entities.Event{}, apperror.InvalidArgument("id is required", nil)
+	}
+	return s.Repo.GetByID(ctx, id)
 }

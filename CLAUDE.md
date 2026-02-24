@@ -32,9 +32,9 @@ cmd/api/main.go                    → Entry point, composition root, signal han
 internal/config/                   → Env-var-based configuration (shared, layer-independent)
 internal/domain/entities/          → Event entity, EventType value object, payload types, NewEvent constructor
 internal/domain/ports/             → Output port interfaces (EventRepository: Create, GetByID)
-internal/application/ports/        → Input port interfaces (SubmitEventUseCase, GetEventUseCase)
+internal/application/ports/        → Input port interfaces (EventService)
 internal/pkg/apperror/             → Typed error taxonomy (AppError with codes: invalid_argument, conflict, not_found, timeout, canceled, rate_limited, etc.)
-internal/application/usecases/     → Business logic (SubmitEvent, GetEvent use cases)
+internal/application/usecases/     → Business logic (EventService implementation with SubmitEvent, GetEvent methods)
 internal/application/validation/   → Payload shape validation per event type (application concern, not domain)
 internal/infrastructure/http/      → Gin router, handler, DTOs, RouterOptions, HealthChecker interface, middleware stack, error-to-HTTP mapping, business metrics
 internal/infrastructure/postgres/  → EventRepository implementation using pgxpool (Create, GetByID, mapDBError)
@@ -126,9 +126,8 @@ Set `TLS_CERT_FILE` and `TLS_KEY_FILE` (both required together) to enable `Liste
 |---|---|---|
 | `domain/entities` | `event_test.go` | `NewEvent` invariants: empty type, unsupported type, empty idempotency key, all valid types accepted |
 | `application/validation` | `validate_event_test.go` | All 4 event types (valid + invalid fields + invalid JSON + invalid email + amount rules), empty type, unsupported type |
-| `application/usecases` | `submit_event_test.go` | Success, payload error, repo error, missing idempotency key, empty type, unsupported type |
-| `application/usecases` | `get_event_test.go` | Success, empty id → invalid_argument, repo not_found error |
-| `infrastructure/http` | `handler_test.go` | Missing/invalid idempotency key, success + Location header, use case error, unauthorized, wrong content-type, rate limit, GET success, GET 404, GET unauthorized, metric increments |
+| `application/usecases` | `event_service_test.go` | EventService.SubmitEvent: success, payload error, repo error, missing idempotency key, empty type, unsupported type; EventService.GetEvent: success, empty id → invalid_argument, repo not_found error |
+| `infrastructure/http` | `handler_test.go` | Missing/invalid idempotency key, success + Location header, service error, unauthorized, wrong content-type, rate limit, GET success, GET 404, GET unauthorized, metric increments |
 | `infrastructure/http/errmap` | `errmap_test.go` | All AppError codes → HTTP status, context.DeadlineExceeded → 504, context.Canceled → 499 |
 | `infrastructure/http/middleware` | `jwt_test.go` | HS256 success, subject in context, missing header, expired token, missing exp, RS256 rejected, issuer validation, audience validation, empty secret |
 | `infrastructure/postgres` | `event_repository_test.go` | `mapDBError`: unique_violation → conflict, not_null_violation → invalid_argument, context errors pass-through, generic errors → internal |

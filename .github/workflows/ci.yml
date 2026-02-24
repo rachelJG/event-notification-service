@@ -47,11 +47,11 @@ jobs:
       - name: Print coverage summary
         run: go tool cover -func=coverage.out
 
-      - name: Enforce minimum coverage (30%)
-        # Threshold is intentionally conservative: cmd/, config, logger and
-        # apperror have no unit tests (composition roots / pure constructors),
-        # pulling the weighted total down. Raise the threshold as integration
-        # test coverage grows.
+      - name: Enforce minimum coverage (34%)
+        # Weighted total is held back by cmd/, config, logger and apperror
+        # which have no unit tests (composition roots / pure constructors).
+        # Target 60% once integration tests are counted or those packages
+        # are excluded from the measurement.
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}' | tr -d '%')
           echo "Total coverage: ${COVERAGE}%"
@@ -59,7 +59,7 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          awk "BEGIN { if (${COVERAGE} < 30) { print \"Coverage ${COVERAGE}% is below the 30% threshold\"; exit 1 } }"
+          awk "BEGIN { if (${COVERAGE} < 34) { print \"Coverage ${COVERAGE}% is below the 34% threshold\"; exit 1 } }"
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -67,6 +67,24 @@ jobs:
           name: coverage-report
           path: coverage.out
           retention-days: 7
+
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build API binary
+        run: go build -o bin/event-service ./cmd/api
+
+      - name: Build worker binary
+        run: go build -o bin/worker ./cmd/worker
 
   vuln:
     name: Vulnerability scan

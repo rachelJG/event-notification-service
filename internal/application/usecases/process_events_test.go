@@ -47,6 +47,17 @@ func (r *fakeNotificationRepo) UpdateStatus(_ context.Context, id string, update
 	return nil
 }
 
+type fakeRenderer struct {
+	err error
+}
+
+func (r *fakeRenderer) Render(evt entities.Event) (string, string, error) {
+	if r.err != nil {
+		return "", "", r.err
+	}
+	return "Subject for " + evt.Type, "Body for " + evt.Type, nil
+}
+
 type fakeEventRepoForWorker struct {
 	claimed   []entities.Event
 	statuses  map[string]string
@@ -86,7 +97,7 @@ func TestProcessEventsSuccess(t *testing.T) {
 	}
 	notifRepo := &fakeNotificationRepo{}
 
-	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, BatchSize: 10}
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
 	count, err := uc.Handle(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -109,7 +120,7 @@ func TestProcessEventsClaimError(t *testing.T) {
 	eventRepo := &fakeEventRepoForWorker{claimErr: errors.New("db down")}
 	notifRepo := &fakeNotificationRepo{}
 
-	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, BatchSize: 10}
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
 	_, err := uc.Handle(context.Background())
 	if err == nil {
 		t.Fatal("expected error")
@@ -124,7 +135,7 @@ func TestProcessEventsBadPayloadMarksEventFailed(t *testing.T) {
 	}
 	notifRepo := &fakeNotificationRepo{}
 
-	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, BatchSize: 10}
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
 	count, err := uc.Handle(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -141,7 +152,7 @@ func TestProcessEventsNoPendingEvents(t *testing.T) {
 	eventRepo := &fakeEventRepoForWorker{claimed: nil}
 	notifRepo := &fakeNotificationRepo{}
 
-	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, BatchSize: 10}
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
 	count, err := uc.Handle(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -159,7 +170,7 @@ func TestProcessEventsNotificationRepoError(t *testing.T) {
 	}
 	notifRepo := &fakeNotificationRepo{err: errors.New("insert failed")}
 
-	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, BatchSize: 10}
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
 	count, err := uc.Handle(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error (soft failure), got %v", err)

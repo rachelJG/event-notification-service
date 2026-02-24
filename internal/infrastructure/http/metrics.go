@@ -17,3 +17,13 @@ var eventsSubmittedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 func recordEventSubmitted(eventType, result string) {
 	eventsSubmittedTotal.WithLabelValues(eventType, result).Inc()
 }
+
+// httpErrorsTotal counts HTTP errors by error code (apperror code, not HTTP status).
+var httpErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "http_errors_total",
+	Help: "Total number of HTTP error responses, partitioned by error code.",
+}, []string{"code"})
+
+func recordHTTPError(code string) {
+	httpErrorsTotal.WithLabelValues(code).Inc()
+}

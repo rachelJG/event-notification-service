@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	appports "github.com/rachelJG/event-notification-service/internal/application/ports"
 	"github.com/rachelJG/event-notification-service/internal/application/usecases"
 	"github.com/rachelJG/event-notification-service/internal/config"
@@ -70,10 +71,11 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		return nil, err
 	}
 
+	prometheus.MustRegister(postgres.NewPoolStatsCollector(pool))
+
 	repo := postgres.EventRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
-	var submitUC appports.SubmitEventUseCase = &usecases.SubmitEvent{Repo: repo}
-	var getUC appports.GetEventUseCase = &usecases.GetEvent{Repo: repo}
-	handler := httpadapter.Handler{SubmitEvent: submitUC, GetEvent: getUC, Logger: log}
+	var eventService appports.EventService = &usecases.EventService{Repo: repo}
+	handler := httpadapter.Handler{EventService: eventService, Logger: log}
 
 	health := pgHealthChecker{pool: pool}
 	opts := httpadapter.RouterOptions{
