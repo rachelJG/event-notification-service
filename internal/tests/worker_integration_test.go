@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rachelJG/event-notification-service/internal/application/usecases"
 	"github.com/rachelJG/event-notification-service/internal/domain/entities"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/email"
@@ -32,10 +33,9 @@ func (s *fakeEmailSender) Send(_ context.Context, to, subject, body string) erro
 	return nil
 }
 
-// newWorkerTestPool creates a pool and ensures both events and notifications tables exist.
-func newWorkerTestPool(t *testing.T) *testDB {
+// setupWorkerSchema ensures both events and notifications tables exist with all required columns.
+func setupWorkerSchema(t *testing.T, pool *pgxpool.Pool, ctx context.Context) {
 	t.Helper()
-	pool, ctx := newTestPool(t)
 
 	// Ensure notifications table and types exist
 	_, err := pool.Exec(ctx, `
@@ -78,16 +78,6 @@ func newWorkerTestPool(t *testing.T) *testDB {
 	if _, err := pool.Exec(ctx, `TRUNCATE TABLE notifications, events`); err != nil {
 		t.Fatalf("truncate tables: %v", err)
 	}
-
-	return &testDB{pool: pool, ctx: ctx}
-}
-
-type testDB struct {
-	pool interface {
-		Exec(ctx context.Context, sql string, args ...any) (interface{ RowsAffected() int64 }, error)
-		QueryRow(ctx context.Context, sql string, args ...any) interface{ Scan(dest ...any) error }
-	}
-	ctx context.Context
 }
 
 // TestWorkerProcessAndDeliverEndToEnd tests the full worker pipeline:
@@ -96,43 +86,7 @@ type testDB struct {
 // 3. DeliverNotifications sends emails via fake sender
 func TestWorkerProcessAndDeliverEndToEnd(t *testing.T) {
 	pool, ctx := newTestPool(t)
-
-	// Ensure full schema
-	_, err := pool.Exec(ctx, `
-		DO $$ BEGIN
-			CREATE TYPE notification_status AS ENUM ('pending', 'processing', 'delivered', 'failed');
-		EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-		DO $$ BEGIN
-			CREATE TYPE notification_channel AS ENUM ('email');
-		EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-	`)
-	if err != nil {
-		t.Fatalf("ensure notification types: %v", err)
-	}
-	_, err = pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS notifications (
-			id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			event_id      UUID NOT NULL REFERENCES events(id),
-			channel       notification_channel NOT NULL,
-			recipient     TEXT NOT NULL,
-			subject       TEXT NOT NULL,
-			body          TEXT NOT NULL,
-			status        notification_status NOT NULL DEFAULT 'pending',
-			attempts      INT NOT NULL DEFAULT 0,
-			max_attempts  INT NOT NULL DEFAULT 5,
-			last_error    TEXT,
-			next_retry_at TIMESTAMPTZ,
-			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-	`)
-	if err != nil {
-		t.Fatalf("ensure notifications table: %v", err)
-	}
-	_, _ = pool.Exec(ctx, `ALTER TABLE events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'accepted'`)
-	if _, err := pool.Exec(ctx, `TRUNCATE TABLE notifications, events`); err != nil {
-		t.Fatalf("truncate: %v", err)
-	}
+	setupWorkerSchema(t, pool, ctx)
 
 	eventRepo := postgres.EventRepository{Pool: pool}
 	notifRepo := postgres.NotificationRepository{Pool: pool}
@@ -140,11 +94,11 @@ func TestWorkerProcessAndDeliverEndToEnd(t *testing.T) {
 	sender := &fakeEmailSender{}
 
 	// Step 1: Submit events
-	submitUC := usecases.SubmitEvent{Repo: eventRepo}
+	submitUC := usecases.EventService{Repo: eventRepo}
 	payload := mustMarshal(t, entities.UserRegisteredPayload{
 		UserID: "u1", Email: "alice@example.com", Name: "Alice",
 	})
-	_, err = submitUC.Handle(ctx, entities.EventTypeUserRegistered, payload, "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+	_, err := submitUC.SubmitEvent(ctx, entities.EventTypeUserRegistered, payload, "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
 	if err != nil {
 		t.Fatalf("submit event: %v", err)
 	}
@@ -154,7 +108,7 @@ func TestWorkerProcessAndDeliverEndToEnd(t *testing.T) {
 	})
 	// OrderPaid needs email in payload for extractRecipient
 	payload2WithEmail := []byte(`{"order_id":"o1","user_id":"u1","amount":49.99,"currency":"USD","email":"alice@example.com"}`)
-	_, err = submitUC.Handle(ctx, entities.EventTypeOrderPaid, payload2WithEmail, "ffffffff-ffff-ffff-ffff-ffffffffffff")
+	_, err = submitUC.SubmitEvent(ctx, entities.EventTypeOrderPaid, payload2WithEmail, "ffffffff-ffff-ffff-ffff-ffffffffffff")
 	if err != nil {
 		t.Fatalf("submit event 2: %v", err)
 	}
