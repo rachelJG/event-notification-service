@@ -128,17 +128,22 @@ Legend: `DONE` = completed, `TODO` = pending, `IN-PROGRESS` = someone started it
 Currently: **TASK-4.2** (email templates).
 
 **Recommended order:**
-1. TASK-4.2 — Only remaining task from the core phases (1-5)
-2. Phase 7 — Observability (TASK-7.3 depends on the existing worker)
-4. Phase 8 — Testing for new features (TASK-8.3, 8.4 after functionality is in place, 8.5 last)
-5. Phase 9 — Deployment (last, when everything else is ready)
+1. TASK-4.2 — Only remaining task from the core phases (1-5). Extract `renderEmail` from `ProcessEvents` use case into `internal/infrastructure/email/templates.go`
+2. Phase 7 — Observability: pgxpool Prometheus collector (7.1), HTTP error counter (7.2), worker metrics (7.3), audit logging (7.4)
+3. Phase 8 — Testing: health endpoint tests (8.3), worker integration test (8.4), raise coverage to 60% (8.5)
+4. Phase 9 — Deployment: K8s manifests (9.1), deploy workflow (9.2), worker CI build (9.3)
+
+**Progress summary:**
+- Phases 1-6: **Complete** (core pipeline + production hardening)
+- TASK-4.2: Only remaining task from core phases
+- Phase 7: All 4 tasks TODO (no blockers — Phase 5 is done)
+- Phase 8: 3 tasks TODO, 2 DONE (8.1, 8.2)
+- Phase 9: All 3 tasks TODO (do last)
 
 **Cross-phase dependencies:**
-- Phases 1-6: Completed (core pipeline + production hardening)
-- Phase 7.3: Depends on Phase 5 (DONE)
-- Phase 8.4: Depends on Phases 3+5 (DONE)
-- Phase 8.5: Do last, after all tests are added
-- Phase 9: Do last
+- All blockers for remaining phases are resolved (Phases 1-6 done)
+- TASK-8.5 (coverage threshold): Do after all other tests are added
+- Phase 9: Do last, when everything else is ready
 
 ---
 

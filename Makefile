@@ -13,7 +13,7 @@ build:
 	GOCACHE=$(GOCACHE) \
 	GOMODCACHE=$(GOMODCACHE) \
 	GOPATH=$(GOPATH) \
-	go build $(LDFLAGS) -o event-service ./cmd/api
+	go build $(LDFLAGS) -o bin/event-service ./cmd/api
 
 build-worker:
 	GOCACHE=$(GOCACHE) \
