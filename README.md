@@ -153,10 +153,10 @@ event-notification-service/
 
 - ✅ **Event Ingestion**: REST API with JWT authentication and idempotency keys
 - ✅ **Supported Event Types**:
-  - `user.signup` — User registration notifications
-  - `password.reset` — Password reset emails
-  - `payment.received` — Payment confirmation
-  - `order.shipped` — Shipping notifications
+  - `UserRegistered` — User registration notifications
+  - `PasswordResetRequested` — Password reset emails
+  - `OrderPaid` — Payment confirmation
+  - `OrderShipped` — Shipping notifications
 - ✅ **Idempotency**: Guaranteed via `UNIQUE(idempotency_key, type)` DB constraint
 - ✅ **Async Processing**: Worker polls pending events every 5 seconds
 - ✅ **Email Delivery**: SMTP adapter with per-event-type templates
@@ -315,7 +315,7 @@ Submit a new event for processing.
 **Request Body**:
 ```json
 {
-  "event_type": "user.signup",
+  "event_type": "UserRegistered",
   "payload": {
     "user_id": "12345",
     "email": "user@example.com",
@@ -343,7 +343,7 @@ curl -X POST http://localhost:8080/api/v1/events \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{
-    "event_type": "user.signup",
+    "event_type": "UserRegistered",
     "payload": {
       "user_id": "12345",
       "email": "user@example.com",
@@ -363,7 +363,7 @@ Retrieve a previously submitted event.
   ```json
   {
     "id": "550e8400-e29b-41d4-a716-446655440000",
-    "type": "user.signup",
+    "type": "UserRegistered",
     "payload": {"user_id": "12345", "email": "user@example.com", "name": "John Doe"},
     "occurred_at": "2026-02-24T10:30:00Z",
     "created_at": "2026-02-24T10:30:01Z"
@@ -386,10 +386,10 @@ Prometheus metrics endpoint (no auth required).
 
 | Event Type | Payload Schema | Email Template |
 |------------|----------------|----------------|
-| `user.signup` | `{user_id, email, name}` | Welcome email |
-| `password.reset` | `{email, reset_link}` | Password reset instructions |
-| `payment.received` | `{email, amount, currency}` | Payment confirmation |
-| `order.shipped` | `{email, order_id, tracking_number}` | Shipping notification |
+| `UserRegistered` | `{user_id, email, name}` | Welcome email |
+| `PasswordResetRequested` | `{user_id, email}` | Password reset instructions |
+| `OrderPaid` | `{order_id, user_id, amount, currency}` | Payment confirmation |
+| `OrderShipped` | `{order_id, user_id, carrier, tracking_number}` | Shipping notification |
 
 Full API documentation: [docs/api.apib](docs/api.apib)
 
@@ -679,7 +679,7 @@ All logs are JSON-formatted (Zap) with consistent fields:
   "msg": "event submitted",
   "request_id": "550e8400-e29b-41d4-a716-446655440000",
   "event_id": "123e4567-e89b-12d3-a456-426614174000",
-  "event_type": "user.signup",
+  "event_type": "UserRegistered",
   "user_id": "12345"
 }
 ```
