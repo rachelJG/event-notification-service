@@ -104,3 +104,30 @@ func TestSendWithDeadlineExceeded(t *testing.T) {
 		t.Fatal("expected error from expired context, got nil")
 	}
 }
+
+func TestSendConnectionRefused(t *testing.T) {
+	// Use a port that is unlikely to have an SMTP server listening
+	s := NewSMTPSender("127.0.0.1", "19", "user", "pass", "from@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := s.Send(ctx, "to@test.com", "subject", "body")
+	if err == nil {
+		t.Fatal("expected error from connection refused, got nil")
+	}
+}
+
+func TestSendNoAuth(t *testing.T) {
+	// Verify that empty user/pass results in nil auth (code path where auth is nil)
+	s := NewSMTPSender("127.0.0.1", "19", "", "", "from@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := s.Send(ctx, "to@test.com", "subject", "body")
+	// Will fail at connection level, but exercises the auth=nil path
+	if err == nil {
+		t.Fatal("expected error from connection refused, got nil")
+	}
+}

@@ -177,8 +177,6 @@ Migration files follow the `{version}_{name}.up.sql` / `{version}_{name}.down.sq
 `.github/workflows/ci.yml` runs on every push and pull request:
 
 - **lint** job: `golangci-lint` with `.golangci.yml` config
-- **test** job: `go test -race -coverprofile -covermode=atomic ./...`, enforces ≥ 30% total coverage, writes per-function summary to the GitHub Actions step summary, uploads `coverage.out` as an artifact
-
-The threshold is conservative because `cmd/`, `config`, `logger` and `apperror` have no unit tests (composition roots / pure constructors) and pull the weighted total down. Raise it as integration test coverage grows.
+- **test** job: `go test -race -coverprofile -covermode=atomic` on `internal/` packages (excludes `cmd/` composition roots), enforces ≥ 80% total coverage, writes per-function summary to the GitHub Actions step summary, uploads `coverage.out` as an artifact
 
 To enforce CI before deploy: enable **branch protection rules** on `main` → *Require status checks to pass* → select `Lint` and `Test & Coverage`.
