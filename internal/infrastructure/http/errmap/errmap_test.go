@@ -2,6 +2,7 @@ package errmap
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -24,6 +25,8 @@ func TestFromErrorMapping(t *testing.T) {
 		{"rate_limited", apperror.New(apperror.CodeRateLimited, "slow down", nil), http.StatusTooManyRequests, "rate_limited"},
 		{"deadline", context.DeadlineExceeded, http.StatusGatewayTimeout, "timeout"},
 		{"canceled", context.Canceled, StatusClientClosedRequest, "canceled"},
+		{"unknown_apperror", apperror.New("unknown_code", "unknown", nil), http.StatusInternalServerError, "internal"},
+		{"generic_error", errors.New("something"), http.StatusInternalServerError, "internal"},
 	}
 
 	for _, tc := range cases {
@@ -34,6 +37,29 @@ func TestFromErrorMapping(t *testing.T) {
 			}
 			if got.Code != tc.wantCode {
 				t.Fatalf("code: got %s, want %s", got.Code, tc.wantCode)
+			}
+		})
+	}
+}
+
+func TestMessageMapping(t *testing.T) {
+	cases := []struct {
+		name    string
+		err     error
+		wantMsg string
+	}{
+		{"canceled", context.Canceled, "request canceled"},
+		{"deadline_exceeded", context.DeadlineExceeded, "request timeout"},
+		{"apperror_with_message", apperror.InvalidArgument("bad input", nil), "bad input"},
+		{"apperror_empty_message", apperror.New(apperror.CodeInternal, "", nil), "internal error"},
+		{"generic_error", errors.New("something"), "internal error"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Message(tc.err)
+			if got != tc.wantMsg {
+				t.Fatalf("Message() = %q, want %q", got, tc.wantMsg)
 			}
 		})
 	}

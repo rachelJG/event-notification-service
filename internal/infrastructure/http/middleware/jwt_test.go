@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 )
 
 func init() {
@@ -229,6 +230,45 @@ func TestJWTAuthEmptySecret(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 for empty secret, got %d", w.Code)
+	}
+}
+
+func TestJWTAuthWithLoggerOnFailure(t *testing.T) {
+	secret := "supersecretkeythatisatleast32bytes!!"
+	// Expired token triggers the failure-logging branch
+	token := makeToken(t, secret, jwt.MapClaims{
+		"sub": "user-1",
+		"exp": time.Now().Add(-1 * time.Minute).Unix(),
+	})
+
+	logger, _ := zap.NewDevelopment()
+	r := newJWTRouter(JWTOptions{Secret: secret, Logger: logger})
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestJWTAuthWithLoggerOnSuccess(t *testing.T) {
+	secret := "supersecretkeythatisatleast32bytes!!"
+	token := makeToken(t, secret, jwt.MapClaims{
+		"sub": "user-1",
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	})
+
+	logger, _ := zap.NewDevelopment()
+	r := newJWTRouter(JWTOptions{Secret: secret, Logger: logger})
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
 

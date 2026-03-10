@@ -182,3 +182,165 @@ func TestProcessEventsNotificationRepoError(t *testing.T) {
 		t.Fatalf("expected event marked as failed")
 	}
 }
+
+func TestProcessEventsRenderError(t *testing.T) {
+	eventRepo := &fakeEventRepoForWorker{
+		claimed: []entities.Event{
+			{ID: "evt-1", Type: "UserRegistered", Payload: []byte(`{"user_id":"1","email":"a@b.com","name":"Alice"}`)},
+		},
+	}
+	notifRepo := &fakeNotificationRepo{}
+	renderer := &fakeRenderer{err: errors.New("template error")}
+
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: renderer, BatchSize: 10}
+	count, err := uc.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error (soft failure), got %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 processed, got %d", count)
+	}
+	if eventRepo.statuses["evt-1"] != "failed" {
+		t.Fatalf("expected event marked as failed")
+	}
+}
+
+func TestProcessEventsAllEventTypes(t *testing.T) {
+	eventRepo := &fakeEventRepoForWorker{
+		claimed: []entities.Event{
+			{ID: "e1", Type: entities.EventTypeUserRegistered, Payload: []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`)},
+			{ID: "e2", Type: entities.EventTypePasswordResetRequested, Payload: []byte(`{"user_id":"1","email":"b@b.com"}`)},
+			{ID: "e3", Type: entities.EventTypeOrderPaid, Payload: []byte(`{"order_id":"o1","user_id":"1","amount":10,"currency":"USD","email":"c@b.com"}`)},
+			{ID: "e4", Type: entities.EventTypeOrderShipped, Payload: []byte(`{"order_id":"o1","user_id":"1","carrier":"FedEx","tracking_number":"T1","email":"d@b.com"}`)},
+		},
+	}
+	notifRepo := &fakeNotificationRepo{}
+
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
+	count, err := uc.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 4 {
+		t.Fatalf("expected 4 processed, got %d", count)
+	}
+}
+
+func TestProcessEventsUnsupportedType(t *testing.T) {
+	eventRepo := &fakeEventRepoForWorker{
+		claimed: []entities.Event{
+			{ID: "evt-1", Type: "UnknownType", Payload: []byte(`{}`)},
+		},
+	}
+	notifRepo := &fakeNotificationRepo{}
+
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
+	count, err := uc.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 processed, got %d", count)
+	}
+	if eventRepo.statuses["evt-1"] != "failed" {
+		t.Fatalf("expected event marked as failed")
+	}
+}
+
+func TestExtractRecipientAllTypes(t *testing.T) {
+	cases := []struct {
+		name      string
+		eventType string
+		payload   string
+		wantEmail string
+	}{
+		{"UserRegistered", entities.EventTypeUserRegistered, `{"user_id":"u1","email":"a@b.com","name":"A"}`, "a@b.com"},
+		{"PasswordReset", entities.EventTypePasswordResetRequested, `{"user_id":"u1","email":"reset@b.com"}`, "reset@b.com"},
+		{"OrderPaid", entities.EventTypeOrderPaid, `{"email":"paid@b.com"}`, "paid@b.com"},
+		{"OrderShipped", entities.EventTypeOrderShipped, `{"email":"ship@b.com"}`, "ship@b.com"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			evt := entities.Event{Type: tc.eventType, Payload: []byte(tc.payload)}
+			got, err := extractRecipient(evt)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.wantEmail {
+				t.Fatalf("email = %q, want %q", got, tc.wantEmail)
+			}
+		})
+	}
+}
+
+func TestExtractRecipientUnsupportedType(t *testing.T) {
+	evt := entities.Event{Type: "Unknown", Payload: []byte(`{}`)}
+	_, err := extractRecipient(evt)
+	if err == nil {
+		t.Fatal("expected error for unsupported type")
+	}
+}
+
+func TestExtractRecipientInvalidJSON(t *testing.T) {
+	types := []string{
+		entities.EventTypeUserRegistered,
+		entities.EventTypePasswordResetRequested,
+		entities.EventTypeOrderPaid,
+		entities.EventTypeOrderShipped,
+	}
+	for _, et := range types {
+		t.Run(et, func(t *testing.T) {
+			evt := entities.Event{Type: et, Payload: []byte(`{invalid`)}
+			_, err := extractRecipient(evt)
+			if err == nil {
+				t.Fatal("expected error for invalid JSON")
+			}
+		})
+	}
+}
+
+func TestDeliverNotificationsUpdateStatusErrorOnProcessing(t *testing.T) {
+	// When UpdateStatus fails during the initial "processing" transition, the notification is skipped
+	callCount := 0
+	notifRepo := &fakeNotificationRepoWithCallback{
+		pending: []entities.Notification{
+			{ID: "n1", Recipient: "a@b.com", Subject: "Sub", Body: "Body", MaxAttempts: 5},
+		},
+		updateFunc: func(id string, update ports.NotificationUpdate) error {
+			callCount++
+			if callCount == 1 {
+				return errors.New("update failed")
+			}
+			return nil
+		},
+	}
+	sender := &fakeSender{}
+
+	uc := DeliverNotifications{NotificationRepo: notifRepo, Sender: sender, BatchSize: 10}
+	delivered, err := uc.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if delivered != 0 {
+		t.Fatalf("delivered = %d, want 0 (processing update failed)", delivered)
+	}
+}
+
+// fakeNotificationRepoWithCallback provides fine-grained control over UpdateStatus behavior.
+type fakeNotificationRepoWithCallback struct {
+	pending    []entities.Notification
+	updateFunc func(id string, update ports.NotificationUpdate) error
+}
+
+func (r *fakeNotificationRepoWithCallback) Create(_ context.Context, n entities.Notification) (string, error) {
+	return "notif-1", nil
+}
+
+func (r *fakeNotificationRepoWithCallback) FindPending(_ context.Context, limit int) ([]entities.Notification, error) {
+	return r.pending, nil
+}
+
+func (r *fakeNotificationRepoWithCallback) UpdateStatus(_ context.Context, id string, update ports.NotificationUpdate) error {
+	return r.updateFunc(id, update)
+}

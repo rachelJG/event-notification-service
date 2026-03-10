@@ -3,6 +3,7 @@ package httpadapter
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -452,6 +453,40 @@ func TestReadinessReturnsVersionAndDBStats(t *testing.T) {
 	}
 }
 
+func TestRequestIDFromContextEdgeCases(t *testing.T) {
+	// Test requestIDFromContext when key is not a string
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/test", func(c *gin.Context) {
+		c.Set("request_id", 12345) // not a string
+		result := requestIDFromContext(c)
+		if result != "" {
+			t.Errorf("expected empty string for non-string request_id, got %q", result)
+		}
+		c.String(http.StatusOK, "ok")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+}
+
+func TestRequestIDFromContextMissing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/test", func(c *gin.Context) {
+		result := requestIDFromContext(c)
+		if result != "" {
+			t.Errorf("expected empty string for missing request_id, got %q", result)
+		}
+		c.String(http.StatusOK, "ok")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+}
+
 func TestEventsSubmittedMetricSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
@@ -498,6 +533,119 @@ func TestHTTPErrorsMetricIncremented(t *testing.T) {
 	if after-before != 1 {
 		t.Fatalf("expected http_errors_total{invalid_argument} to increment by 1, got %v", after-before)
 	}
+}
+
+func TestSubmitEventHandlerNilLogger(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mock := &mockEventService{submitReturnErr: apperror.InvalidArgument("bad event", nil)}
+	handler := Handler{EventService: mock, Logger: nil}
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e920")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+}
+
+func TestSubmitEventHandlerInvalidJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mock := &mockEventService{submitReturnID: "evt-1"}
+	handler := Handler{EventService: mock, Logger: zap.NewNop()}
+	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(`{not valid json`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
+	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+	assertErrorCode(t, resp, "invalid_argument")
+	if mock.submitCalled {
+		t.Fatal("expected use case not to be called for invalid JSON")
+	}
+}
+
+func TestHSTSHeaderWithTLS(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	opts := testRouterOptions()
+	opts.EnableHSTS = true
+	opts.HSTSMaxAgeSeconds = 31536000
+	router := NewRouter(Handler{EventService: &mockEventService{}}, nil, zap.NewNop(), opts)
+
+	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	// Simulate TLS by setting TLS field
+	req.TLS = &tls.ConnectionState{}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	hsts := w.Header().Get("Strict-Transport-Security")
+	if hsts == "" {
+		t.Fatal("expected Strict-Transport-Security header when TLS is present and HSTS enabled")
+	}
+	if hsts != "max-age=31536000; includeSubDomains" {
+		t.Errorf("unexpected HSTS value: %q", hsts)
+	}
+}
+
+func TestNoHSTSWithoutTLS(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	opts := testRouterOptions()
+	opts.EnableHSTS = true
+	opts.HSTSMaxAgeSeconds = 31536000
+	router := NewRouter(Handler{EventService: &mockEventService{}}, nil, zap.NewNop(), opts)
+
+	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	// No TLS
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	hsts := w.Header().Get("Strict-Transport-Security")
+	if hsts != "" {
+		t.Errorf("expected no HSTS header without TLS, got %q", hsts)
+	}
+}
+
+func TestEventTypeFromContextNonString(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/test", func(c *gin.Context) {
+		c.Set("event_type", 12345)
+		result := eventTypeFromContext(c)
+		if result != "" {
+			t.Errorf("expected empty for non-string event_type, got %q", result)
+		}
+		c.String(http.StatusOK, "ok")
+	})
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r.ServeHTTP(httptest.NewRecorder(), req)
+}
+
+func TestIdempotencyKeyFromContextNonString(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/test", func(c *gin.Context) {
+		c.Set("idempotency_key", 12345)
+		result := idempotencyKeyFromContext(c)
+		if result != "" {
+			t.Errorf("expected empty for non-string idempotency_key, got %q", result)
+		}
+		c.String(http.StatusOK, "ok")
+	})
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r.ServeHTTP(httptest.NewRecorder(), req)
 }
 
 func TestEventsSubmittedMetricError(t *testing.T) {

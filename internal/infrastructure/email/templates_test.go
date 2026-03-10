@@ -90,9 +90,19 @@ func TestTemplateRendererUnsupportedType(t *testing.T) {
 
 func TestTemplateRendererInvalidJSON(t *testing.T) {
 	r := NewTemplateRenderer()
-	evt := entities.Event{Type: entities.EventTypeUserRegistered, Payload: []byte(`{invalid}`)}
-	_, _, err := r.Render(evt)
-	if err == nil {
-		t.Fatal("expected error for invalid JSON")
+	types := []string{
+		entities.EventTypeUserRegistered,
+		entities.EventTypePasswordResetRequested,
+		entities.EventTypeOrderPaid,
+		entities.EventTypeOrderShipped,
+	}
+	for _, et := range types {
+		t.Run(et, func(t *testing.T) {
+			evt := entities.Event{Type: et, Payload: []byte(`{invalid}`)}
+			_, _, err := r.Render(evt)
+			if err == nil {
+				t.Fatal("expected error for invalid JSON")
+			}
+		})
 	}
 }

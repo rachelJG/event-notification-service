@@ -42,16 +42,12 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          go test -race -coverprofile=coverage.out -covermode=atomic ./...
+          go test -race -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v '/cmd/')
 
       - name: Print coverage summary
         run: go tool cover -func=coverage.out
 
-      - name: Enforce minimum coverage (34%)
-        # Weighted total is held back by cmd/, config, logger and apperror
-        # which have no unit tests (composition roots / pure constructors).
-        # Target 60% once integration tests are counted or those packages
-        # are excluded from the measurement.
+      - name: Enforce minimum coverage (80%)
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}' | tr -d '%')
           echo "Total coverage: ${COVERAGE}%"
@@ -59,7 +55,7 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          awk "BEGIN { if (${COVERAGE} < 34) { print \"Coverage ${COVERAGE}% is below the 34% threshold\"; exit 1 } }"
+          awk "BEGIN { if (${COVERAGE} < 80) { print \"Coverage ${COVERAGE}% is below the 80% threshold\"; exit 1 } }"
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
