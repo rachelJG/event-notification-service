@@ -1,0 +1,16 @@
+# Propietarios por defecto para todo el repositorio
+*                                          @rachelJG
+
+# Dominio y lógica de negocio (core del sistema)
+internal/domain/                           @rachelJG
+internal/application/                      @rachelJG
+
+# Infraestructura de base de datos y migraciones
+internal/infrastructure/postgres/          @rachelJG
+
+# Configuración y seguridad
+internal/config/                           @rachelJG
+internal/infrastructure/http/middleware/   @rachelJG
+
+# CI/CD
+.github/workflows/                         @rachelJG
