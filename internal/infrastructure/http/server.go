@@ -8,11 +8,12 @@ import (
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	domainports "github.com/rachelJG/event-notification-service/internal/domain/ports"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/middleware"
 	"go.uber.org/zap"
 )
 
-func NewRouter(handler Handler, health HealthChecker, logger *zap.Logger, opts RouterOptions) *gin.Engine {
+func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker, apiKeyRepo domainports.APIKeyRepository, logger *zap.Logger, opts RouterOptions) *gin.Engine {
 	router := gin.New()
 	if err := router.SetTrustedProxies(opts.TrustedProxies); err != nil && logger != nil {
 		logger.Warn("failed to set trusted proxies", zap.Error(err))
@@ -91,18 +92,40 @@ func NewRouter(handler Handler, health HealthChecker, logger *zap.Logger, opts R
 	})
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+	// Authenticated event routes — require API key with appropriate scopes.
 	v1 := router.Group("/api/v1")
 	v1.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		c.Next()
 	})
-	jwtAuth := middleware.JWTAuth(middleware.JWTOptions{
-		Secret:   opts.JWTSecret,
-		Issuer:   opts.JWTIssuer,
-		Audience: opts.JWTAudience,
-		Logger:   logger,
+
+	eventsWrite := middleware.APIKeyAuth(middleware.APIKeyOptions{
+		Repo:           apiKeyRepo,
+		RequiredScopes: []string{"events:write"},
+		Logger:         logger,
 	})
-	v1.POST("/events", jwtAuth, handler.SubmitEventHandler)
-	v1.GET("/events/:id", jwtAuth, handler.GetEventHandler)
+	eventsRead := middleware.APIKeyAuth(middleware.APIKeyOptions{
+		Repo:           apiKeyRepo,
+		RequiredScopes: []string{"events:read"},
+		Logger:         logger,
+	})
+	v1.POST("/events", eventsWrite, handler.SubmitEventHandler)
+	v1.GET("/events/:id", eventsRead, handler.GetEventHandler)
+
+	// Admin routes — require API key with "admin" scope.
+	admin := router.Group("/admin")
+	admin.Use(func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Next()
+	})
+	adminAuth := middleware.APIKeyAuth(middleware.APIKeyOptions{
+		Repo:           apiKeyRepo,
+		RequiredScopes: []string{"admin"},
+		Logger:         logger,
+	})
+	admin.POST("/api-keys", adminAuth, adminHandler.CreateAPIKeyHandler)
+	admin.GET("/api-keys", adminAuth, adminHandler.ListAPIKeysHandler)
+	admin.DELETE("/api-keys/:id", adminAuth, adminHandler.RevokeAPIKeyHandler)
+
 	return router
 }

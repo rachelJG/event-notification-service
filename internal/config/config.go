@@ -21,12 +21,6 @@ type Config struct {
 	LogLevel string
 	// AppEnv specifies the application environment (development, staging, production)
 	AppEnv string
-	// JWTSecret is used for signing JWT tokens (required in production, min 32 bytes)
-	JWTSecret string
-	// JWTIssuer is the expected issuer claim (iss); validated when non-empty
-	JWTIssuer string
-	// JWTAudience is the expected audience claim (aud); validated when non-empty
-	JWTAudience string
 
 	// TLSCertFile is the path to the TLS certificate file; enables TLS when set together with TLSKeyFile
 	TLSCertFile string
@@ -122,13 +116,10 @@ func Load() Config {
 	appEnv := getenvDefault("APP_ENV", "development")
 	defaultAllowAll := appEnv != "production"
 	return Config{
-		APIAddr:   getenvDefault("API_ADDR", ":8080"),
-		PGDSN:     getenvDefault("PG_DSN", "postgres://postgres:postgres@localhost:5432/events?sslmode=disable"),
-		LogLevel:  getenvDefault("LOG_LEVEL", "info"),
-		AppEnv:    appEnv,
-		JWTSecret:   os.Getenv("JWT_SECRET"),
-		JWTIssuer:   os.Getenv("JWT_ISSUER"),
-		JWTAudience: os.Getenv("JWT_AUDIENCE"),
+		APIAddr:  getenvDefault("API_ADDR", ":8080"),
+		PGDSN:    getenvDefault("PG_DSN", "postgres://postgres:postgres@localhost:5432/events?sslmode=disable"),
+		LogLevel: getenvDefault("LOG_LEVEL", "info"),
+		AppEnv:   appEnv,
 
 		TLSCertFile: os.Getenv("TLS_CERT_FILE"),
 		TLSKeyFile:  os.Getenv("TLS_KEY_FILE"),
@@ -141,7 +132,7 @@ func Load() Config {
 		WriteTimeout:      getenvDurationSecondsDefault("WRITE_TIMEOUT", 15),
 		IdleTimeout:       getenvDurationSecondsDefault("IDLE_TIMEOUT", 60),
 
-		DBQueryTimeout:        getenvDurationSecondsDefault("DB_QUERY_TIMEOUT", 5),
+		DBQueryTimeout: getenvDurationSecondsDefault("DB_QUERY_TIMEOUT", 5),
 
 		DBPoolMaxConns:        getenvInt32Default("DB_POOL_MAX_CONNS", 10),
 		DBPoolMinConns:        getenvInt32Default("DB_POOL_MIN_CONNS", 2),
@@ -174,15 +165,7 @@ func Load() Config {
 // It ensures that CORS and HSTS settings are properly configured.
 //
 // Returns an error if the configuration is invalid, or nil if valid.
-const jwtMinSecretLen = 32
-
 func (c Config) Validate() error {
-	if strings.EqualFold(c.AppEnv, "production") && strings.TrimSpace(c.JWTSecret) == "" {
-		return fmt.Errorf("invalid auth config: JWT_SECRET is required in production")
-	}
-	if strings.TrimSpace(c.JWTSecret) != "" && len(c.JWTSecret) < jwtMinSecretLen {
-		return fmt.Errorf("invalid auth config: JWT_SECRET must be at least %d bytes", jwtMinSecretLen)
-	}
 	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
 		return fmt.Errorf("invalid TLS config: TLS_CERT_FILE and TLS_KEY_FILE must both be set or both be empty")
 	}
