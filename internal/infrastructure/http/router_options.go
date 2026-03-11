@@ -19,18 +19,6 @@ type HealthChecker interface {
 // RouterOptions holds the configuration values needed by the HTTP router.
 // This struct decouples the HTTP adapter from the application-wide config package.
 type RouterOptions struct {
-	// JWTSecret is the HS256 signing secret used to validate JWT tokens.
-	// Must be at least 32 bytes in production environments. Required for JWT authentication.
-	JWTSecret string
-
-	// JWTIssuer is the optional expected 'iss' (issuer) claim in JWT tokens.
-	// When set, the middleware validates that incoming tokens contain this exact issuer value.
-	JWTIssuer string
-
-	// JWTAudience is the optional expected 'aud' (audience) claim in JWT tokens.
-	// When set, the middleware validates that incoming tokens contain this exact audience value.
-	JWTAudience string
-
 	// MaxBodyBytes is the maximum allowed size for request bodies in bytes.
 	// Enforced by the body limit middleware to prevent excessive memory usage from large payloads.
 	MaxBodyBytes int64

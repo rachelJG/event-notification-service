@@ -74,14 +74,14 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 	prometheus.MustRegister(postgres.NewPoolStatsCollector(pool))
 
 	repo := postgres.EventRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
+	apiKeyRepo := postgres.APIKeyRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
+
 	var eventService appports.EventService = &usecases.EventService{Repo: repo}
 	handler := httpadapter.Handler{EventService: eventService, Logger: log}
+	adminHandler := httpadapter.AdminHandler{APIKeyRepo: apiKeyRepo, Logger: log}
 
 	health := pgHealthChecker{pool: pool}
 	opts := httpadapter.RouterOptions{
-		JWTSecret:           cfg.JWTSecret,
-		JWTIssuer:           cfg.JWTIssuer,
-		JWTAudience:         cfg.JWTAudience,
 		MaxBodyBytes:        cfg.MaxBodyBytes,
 		RateLimitRPS:        cfg.RateLimitRPS,
 		RateLimitBurst:      cfg.RateLimitBurst,
@@ -95,7 +95,7 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		TrustedProxies:      cfg.TrustedProxies,
 	}
 
-	router := httpadapter.NewRouter(handler, health, log, opts)
+	router := httpadapter.NewRouter(handler, adminHandler, health, apiKeyRepo, log, opts)
 	server := &http.Server{
 		Addr:              cfg.APIAddr,
 		Handler:           router,
