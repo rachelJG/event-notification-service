@@ -56,7 +56,6 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("API_ADDR", ":9090")
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("APP_ENV", "production")
-	t.Setenv("JWT_SECRET", "test-secret-that-is-at-least-32-bytes-long")
 	t.Setenv("MAX_BODY_BYTES", "2048")
 	t.Setenv("RATE_LIMIT_RPS", "5.5")
 	t.Setenv("RATE_LIMIT_BURST", "10")
@@ -174,10 +173,11 @@ func TestValidateValidDevConfig(t *testing.T) {
 	}
 }
 
-func TestValidateProductionRequiresJWTSecret(t *testing.T) {
+func TestValidateProductionRequiresSMTPHostFromValidate(t *testing.T) {
 	cfg := Config{
 		AppEnv:              "production",
-		CORSAllowAllOrigins: true,
+		CORSAllowAllOrigins: false,
+		CORSAllowedOrigins:  []string{"https://example.com"},
 		RateLimitRPS:        10,
 		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
@@ -185,23 +185,7 @@ func TestValidateProductionRequiresJWTSecret(t *testing.T) {
 	}
 	err := cfg.Validate()
 	if err == nil {
-		t.Fatal("expected error for missing JWT_SECRET in production")
-	}
-}
-
-func TestValidateJWTSecretMinLength(t *testing.T) {
-	cfg := Config{
-		AppEnv:              "development",
-		JWTSecret:           "short",
-		CORSAllowAllOrigins: true,
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
-		MaxBodyBytes:        1 << 20,
-		DBQueryTimeout:      5 * time.Second,
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected error for short JWT_SECRET")
+		t.Fatal("expected error for missing SMTP_HOST in production")
 	}
 }
 
@@ -329,10 +313,9 @@ func TestValidateDBQueryTimeoutPositive(t *testing.T) {
 	}
 }
 
-func TestValidateProductionRequiresSMTPHost(t *testing.T) {
+func TestValidateProductionSMTPHostRequired(t *testing.T) {
 	cfg := Config{
 		AppEnv:              "production",
-		JWTSecret:           "supersecretkeythatisatleast32bytes!!",
 		CORSAllowAllOrigins: false,
 		CORSAllowedOrigins:  []string{"https://example.com"},
 		RateLimitRPS:        10,
