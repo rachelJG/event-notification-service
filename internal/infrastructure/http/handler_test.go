@@ -9,12 +9,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/rachelJG/event-notification-service/internal/domain/entities"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/middleware"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 	"go.uber.org/zap"
 )
@@ -40,16 +39,87 @@ func (m *mockEventService) GetEvent(ctx context.Context, id string) (entities.Ev
 	return m.getReturnEvent, m.getReturnErr
 }
 
+// fakeAPIKeyRepo is an in-memory fake for APIKeyRepository used in handler tests.
+type fakeAPIKeyRepo struct {
+	keys map[string]entities.APIKey // keyed by key_hash
+}
+
+func newFakeAPIKeyRepo(keys ...entities.APIKey) *fakeAPIKeyRepo {
+	repo := &fakeAPIKeyRepo{keys: make(map[string]entities.APIKey)}
+	for _, k := range keys {
+		repo.keys[k.KeyHash] = k
+	}
+	return repo
+}
+
+func (r *fakeAPIKeyRepo) Create(_ context.Context, key entities.APIKey) error {
+	r.keys[key.KeyHash] = key
+	return nil
+}
+
+func (r *fakeAPIKeyRepo) GetByHash(_ context.Context, keyHash string) (entities.APIKey, error) {
+	k, ok := r.keys[keyHash]
+	if !ok {
+		return entities.APIKey{}, apperror.NotFound("key not found", nil)
+	}
+	return k, nil
+}
+
+func (r *fakeAPIKeyRepo) List(_ context.Context) ([]entities.APIKey, error) {
+	out := make([]entities.APIKey, 0, len(r.keys))
+	for _, k := range r.keys {
+		out = append(out, k)
+	}
+	return out, nil
+}
+
+func (r *fakeAPIKeyRepo) Revoke(_ context.Context, id string) error {
+	for h, k := range r.keys {
+		if k.ID == id {
+			k.IsActive = false
+			r.keys[h] = k
+			return nil
+		}
+	}
+	return apperror.NotFound("key not found", nil)
+}
+
+func (r *fakeAPIKeyRepo) UpdateLastUsed(_ context.Context, _ string) error { return nil }
+
+// testAPIKey is the raw key used in tests. Its SHA-256 hash is stored in the fake repo.
+const testRawAPIKey = "test-api-key-for-handler-tests"
+
+// testAPIKeyEntity returns an active APIKey entity with events:write and events:read scopes.
+func testAPIKeyEntity() entities.APIKey {
+	return entities.APIKey{
+		ID:       "key-1",
+		KeyHash:  middleware.HashAPIKey(testRawAPIKey),
+		Name:     "test-key",
+		Scopes:   []string{"events:write", "events:read"},
+		IsActive: true,
+	}
+}
+
+func testRouter(handler Handler, health HealthChecker) *gin.Engine {
+	repo := newFakeAPIKeyRepo(testAPIKeyEntity())
+	return NewRouter(handler, AdminHandler{}, health, repo, zap.NewNop(), testRouterOptions())
+}
+
+func testRouterWithOpts(handler Handler, health HealthChecker, opts RouterOptions) *gin.Engine {
+	repo := newFakeAPIKeyRepo(testAPIKeyEntity())
+	return NewRouter(handler, AdminHandler{}, health, repo, zap.NewNop(), opts)
+}
+
 func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -67,13 +137,13 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "not-a-uuid")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -91,13 +161,13 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -125,13 +195,13 @@ func TestSubmitEventHandlerUseCaseError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnErr: apperror.InvalidArgument("bad event", nil)}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -145,7 +215,7 @@ func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
@@ -167,13 +237,13 @@ func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "text/plain")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -193,14 +263,14 @@ func TestSubmitEventRateLimit(t *testing.T) {
 	opts := testRouterOptions()
 	opts.RateLimitRPS = 1
 	opts.RateLimitBurst = 1
-	router := NewRouter(handler, nil, zap.NewNop(), opts)
+	router := testRouterWithOpts(handler, nil, opts)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.RemoteAddr = "1.2.3.4:1234"
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -212,27 +282,13 @@ func TestSubmitEventRateLimit(t *testing.T) {
 	req2.RemoteAddr = "1.2.3.4:1234"
 	req2.Header.Set("Content-Type", "application/json")
 	req2.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
-	req2.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req2.Header.Set("X-API-Key", testRawAPIKey)
 	resp2 := httptest.NewRecorder()
 
 	router.ServeHTTP(resp2, req2)
 	if resp2.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected second request 429, got %d", resp2.Code)
 	}
-}
-
-func testJWT(t *testing.T, secret string) string {
-	t.Helper()
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "test-user",
-		"exp": time.Now().Add(5 * time.Minute).Unix(),
-	})
-	signed, err := token.SignedString([]byte(secret))
-	if err != nil {
-		t.Fatalf("sign token: %v", err)
-	}
-	return signed
 }
 
 func assertErrorCode(t *testing.T, resp *httptest.ResponseRecorder, wantCode string) {
@@ -251,12 +307,11 @@ func assertErrorCode(t *testing.T, resp *httptest.ResponseRecorder, wantCode str
 
 func testRouterOptions() RouterOptions {
 	return RouterOptions{
-		JWTSecret:           "test-secret",
 		MaxBodyBytes:        1 << 20,
 		RateLimitRPS:        1000,
 		RateLimitBurst:      1000,
 		CORSAllowAllOrigins: true,
-		CORSAllowedHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Idempotency-Key", "Authorization"},
+		CORSAllowedHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Idempotency-Key", "X-API-Key"},
 	}
 }
 
@@ -264,13 +319,13 @@ func TestSubmitEventHandlerLocationHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-abc"}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "7c9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -288,11 +343,11 @@ func TestGetEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	evt := entities.Event{ID: "evt-1", Type: "UserRegistered", Payload: []byte(`{"user_id":"1"}`)}
 	handler := Handler{EventService: &mockEventService{getReturnEvent: evt}, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/evt-1", nil)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -318,11 +373,11 @@ func TestGetEventHandlerNotFound(t *testing.T) {
 		EventService: &mockEventService{getReturnErr: apperror.NotFound("event not found", nil)},
 		Logger:       zap.NewNop(),
 	}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/missing", nil)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -336,7 +391,7 @@ func TestGetEventHandlerNotFound(t *testing.T) {
 func TestGetEventHandlerUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/evt-1", nil)
 	req.Header.Set("Content-Type", "application/json")
@@ -360,8 +415,7 @@ func (m *mockHealthChecker) Stats() DBStats               { return DBStats{MaxCo
 
 func TestLivenessAlwaysOK(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	// health=nil: liveness must not touch the DB
-	router := NewRouter(Handler{EventService: &mockEventService{}}, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(Handler{EventService: &mockEventService{}}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -372,10 +426,7 @@ func TestLivenessAlwaysOK(t *testing.T) {
 
 func TestReadinessOKWhenDBUp(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := NewRouter(
-		Handler{EventService: &mockEventService{}},
-		&mockHealthChecker{}, zap.NewNop(), testRouterOptions(),
-	)
+	router := testRouter(Handler{EventService: &mockEventService{}}, &mockHealthChecker{})
 	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -393,9 +444,9 @@ func TestReadinessOKWhenDBUp(t *testing.T) {
 
 func TestReadiness503WhenDBDown(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := NewRouter(
+	router := testRouter(
 		Handler{EventService: &mockEventService{}},
-		&mockHealthChecker{pingErr: errors.New("connection refused")}, zap.NewNop(), testRouterOptions(),
+		&mockHealthChecker{pingErr: errors.New("connection refused")},
 	)
 	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
 	w := httptest.NewRecorder()
@@ -407,10 +458,7 @@ func TestReadiness503WhenDBDown(t *testing.T) {
 
 func TestReadiness503WhenHealthCheckerNil(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := NewRouter(
-		Handler{EventService: &mockEventService{}},
-		nil, zap.NewNop(), testRouterOptions(),
-	)
+	router := testRouter(Handler{EventService: &mockEventService{}}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -424,9 +472,9 @@ func TestReadinessReturnsVersionAndDBStats(t *testing.T) {
 	opts := testRouterOptions()
 	opts.Version = "1.0.0"
 	opts.Commit = "abc123"
-	router := NewRouter(
+	router := testRouterWithOpts(
 		Handler{EventService: &mockEventService{}},
-		&mockHealthChecker{}, zap.NewNop(), opts,
+		&mockHealthChecker{}, opts,
 	)
 	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
 	w := httptest.NewRecorder()
@@ -454,11 +502,10 @@ func TestReadinessReturnsVersionAndDBStats(t *testing.T) {
 }
 
 func TestRequestIDFromContextEdgeCases(t *testing.T) {
-	// Test requestIDFromContext when key is not a string
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/test", func(c *gin.Context) {
-		c.Set("request_id", 12345) // not a string
+		c.Set("request_id", 12345)
 		result := requestIDFromContext(c)
 		if result != "" {
 			t.Errorf("expected empty string for non-string request_id, got %q", result)
@@ -491,16 +538,15 @@ func TestEventsSubmittedMetricSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
-	// Reset counter state by reading current value before the request
 	before := testutil.ToFloat64(eventsSubmittedTotal.WithLabelValues("UserRegistered", "success"))
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91b")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
@@ -517,7 +563,7 @@ func TestHTTPErrorsMetricIncremented(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnErr: apperror.InvalidArgument("bad event", nil)}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	before := testutil.ToFloat64(httpErrorsTotal.WithLabelValues("invalid_argument"))
 
@@ -525,7 +571,7 @@ func TestHTTPErrorsMetricIncremented(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91d")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
@@ -539,13 +585,13 @@ func TestSubmitEventHandlerNilLogger(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnErr: apperror.InvalidArgument("bad event", nil)}
 	handler := Handler{EventService: mock, Logger: nil}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e920")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -559,12 +605,12 @@ func TestSubmitEventHandlerInvalidJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(`{not valid json`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -583,10 +629,9 @@ func TestHSTSHeaderWithTLS(t *testing.T) {
 	opts := testRouterOptions()
 	opts.EnableHSTS = true
 	opts.HSTSMaxAgeSeconds = 31536000
-	router := NewRouter(Handler{EventService: &mockEventService{}}, nil, zap.NewNop(), opts)
+	router := testRouterWithOpts(Handler{EventService: &mockEventService{}}, nil, opts)
 
 	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
-	// Simulate TLS by setting TLS field
 	req.TLS = &tls.ConnectionState{}
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -605,10 +650,9 @@ func TestNoHSTSWithoutTLS(t *testing.T) {
 	opts := testRouterOptions()
 	opts.EnableHSTS = true
 	opts.HSTSMaxAgeSeconds = 31536000
-	router := NewRouter(Handler{EventService: &mockEventService{}}, nil, zap.NewNop(), opts)
+	router := testRouterWithOpts(Handler{EventService: &mockEventService{}}, nil, opts)
 
 	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
-	// No TLS
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -652,7 +696,7 @@ func TestEventsSubmittedMetricError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnErr: apperror.InvalidArgument("bad event", nil)}
 	handler := Handler{EventService: mock, Logger: zap.NewNop()}
-	router := NewRouter(handler, nil, zap.NewNop(), testRouterOptions())
+	router := testRouter(handler, nil)
 
 	before := testutil.ToFloat64(eventsSubmittedTotal.WithLabelValues("UserRegistered", "error"))
 
@@ -660,7 +704,7 @@ func TestEventsSubmittedMetricError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91c")
-	req.Header.Set("Authorization", "Bearer "+testJWT(t, "test-secret"))
+	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
