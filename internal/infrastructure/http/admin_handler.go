@@ -51,7 +51,7 @@ func (h AdminHandler) CreateAPIKeyHandler(c *gin.Context) {
 		return
 	}
 
-	rawKey, err := generateRawKey()
+	rawKey, err := generateRawKeyFunc()
 	if err != nil {
 		if h.Logger != nil {
 			h.Logger.Error("failed to generate api key", zap.Error(err))
@@ -126,6 +126,10 @@ func (h AdminHandler) RevokeAPIKeyHandler(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "api key revoked", "id": id})
 }
+
+// generateRawKeyFunc is the key generation function used by CreateAPIKeyHandler.
+// It is a variable so that tests can inject failures.
+var generateRawKeyFunc = generateRawKey
 
 // generateRawKey creates a 32-byte (256-bit) cryptographically random key
 // and returns it as a 64-character hex string.

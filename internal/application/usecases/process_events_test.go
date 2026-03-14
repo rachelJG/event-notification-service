@@ -247,6 +247,28 @@ func TestProcessEventsUnsupportedType(t *testing.T) {
 	}
 }
 
+func TestProcessEventsNewNotificationError(t *testing.T) {
+	// extractRecipient succeeds but returns empty email, causing NewNotification to fail.
+	eventRepo := &fakeEventRepoForWorker{
+		claimed: []entities.Event{
+			{ID: "evt-1", Type: entities.EventTypeUserRegistered, Payload: []byte(`{"user_id":"1","email":"","name":"A"}`)},
+		},
+	}
+	notifRepo := &fakeNotificationRepo{}
+
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
+	count, err := uc.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error (soft failure), got %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 processed, got %d", count)
+	}
+	if eventRepo.statuses["evt-1"] != "failed" {
+		t.Fatalf("expected event marked as failed")
+	}
+}
+
 func TestExtractRecipientAllTypes(t *testing.T) {
 	cases := []struct {
 		name      string
