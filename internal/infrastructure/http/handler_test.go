@@ -501,6 +501,33 @@ func TestReadinessReturnsVersionAndDBStats(t *testing.T) {
 	}
 }
 
+func TestNewRouterDefaultBodyLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	opts := testRouterOptions()
+	opts.MaxBodyBytes = 0 // triggers default fallback
+	router := testRouterWithOpts(Handler{EventService: &mockEventService{}}, nil, opts)
+	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestNewRouterDefaultRateLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	opts := testRouterOptions()
+	opts.RateLimitRPS = 0  // triggers default fallback
+	opts.RateLimitBurst = 0 // triggers default fallback
+	router := testRouterWithOpts(Handler{EventService: &mockEventService{}}, nil, opts)
+	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
 func TestRequestIDFromContextEdgeCases(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -659,6 +686,28 @@ func TestNoHSTSWithoutTLS(t *testing.T) {
 	hsts := w.Header().Get("Strict-Transport-Security")
 	if hsts != "" {
 		t.Errorf("expected no HSTS header without TLS, got %q", hsts)
+	}
+}
+
+func TestNewRouterInvalidTrustedProxiesLogsWarning(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	opts := testRouterOptions()
+	opts.TrustedProxies = []string{"not-a-valid-cidr"}
+	repo := newFakeAPIKeyRepo(testAPIKeyEntity())
+	router := NewRouter(Handler{EventService: &mockEventService{}}, AdminHandler{}, nil, repo, zap.NewNop(), opts)
+	if router == nil {
+		t.Fatal("expected non-nil router even with invalid trusted proxies")
+	}
+}
+
+func TestNewRouterInvalidTrustedProxiesNilLogger(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	opts := testRouterOptions()
+	opts.TrustedProxies = []string{"not-a-valid-cidr"}
+	repo := newFakeAPIKeyRepo(testAPIKeyEntity())
+	router := NewRouter(Handler{EventService: &mockEventService{}}, AdminHandler{}, nil, repo, nil, opts)
+	if router == nil {
+		t.Fatal("expected non-nil router even with nil logger")
 	}
 }
 

@@ -2,6 +2,7 @@ package email
 
 import (
 	"context"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -115,6 +116,41 @@ func TestSendConnectionRefused(t *testing.T) {
 	err := s.Send(ctx, "to@test.com", "subject", "body")
 	if err == nil {
 		t.Fatal("expected error from connection refused, got nil")
+	}
+}
+
+func TestSendContextCanceledDuringSend(t *testing.T) {
+	// Start a TCP listener that accepts but never responds, causing smtp.SendMail to block.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	// Accept connections in background but do nothing (simulate slow server).
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			// Hold the connection open without responding.
+			defer conn.Close()
+		}
+	}()
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	s := NewSMTPSender("127.0.0.1", port, "", "", "from@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	sendErr := s.Send(ctx, "to@test.com", "subject", "body")
+	if sendErr == nil {
+		t.Fatal("expected error from context cancellation during send")
+	}
+	if !strings.Contains(sendErr.Error(), "canceled") && !strings.Contains(sendErr.Error(), "deadline") {
+		t.Errorf("expected context error, got: %v", sendErr)
 	}
 }
 
