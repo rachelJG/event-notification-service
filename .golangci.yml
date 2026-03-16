@@ -8,12 +8,10 @@ linters:
   default: none
   enable:
     - errcheck
-    - gosimple
     - gosec
     - govet
     - ineffassign
     - staticcheck
-    - typecheck
   exclusions:
     rules:
       - path: _test\.go
