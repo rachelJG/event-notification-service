@@ -163,7 +163,7 @@ func lastApplied(ctx context.Context, pool *pgxpool.Pool) (string, error) {
 }
 
 func applyMigration(ctx context.Context, pool *pgxpool.Pool, version, file string) error {
-	content, err := os.ReadFile(file)
+	content, err := os.ReadFile(file) //nolint:gosec // file path comes from trusted migration directory, not user input
 	if err != nil {
 		return err
 	}
@@ -184,7 +184,7 @@ func applyMigration(ctx context.Context, pool *pgxpool.Pool, version, file strin
 }
 
 func rollbackMigration(ctx context.Context, pool *pgxpool.Pool, version, file string) error {
-	content, err := os.ReadFile(file)
+	content, err := os.ReadFile(file) //nolint:gosec // file path comes from trusted migration directory, not user input
 	if err != nil {
 		return fmt.Errorf("read down migration %s: %w", file, err)
 	}
