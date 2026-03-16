@@ -102,13 +102,17 @@ func TestCreateAPIKeyHandlerMissingName(t *testing.T) {
 }
 
 func TestCreateAPIKeyHandlerKeyGenError(t *testing.T) {
-	original := generateRawKeyFunc
-	generateRawKeyFunc = func() (string, error) {
-		return "", errors.New("entropy exhausted")
+	gin.SetMode(gin.TestMode)
+	repo := newFakeAPIKeyRepo(adminTestAPIKey())
+	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
+	adminHandler := AdminHandler{
+		APIKeyRepo: repo,
+		Logger:     zap.NewNop(),
+		KeyGenerator: func() (string, error) {
+			return "", errors.New("entropy exhausted")
+		},
 	}
-	t.Cleanup(func() { generateRawKeyFunc = original })
-
-	router, _ := adminTestRouter()
+	router := NewRouter(handler, adminHandler, nil, repo, zap.NewNop(), testRouterOptions())
 
 	body := `{"name":"my-service","scopes":["events:read"]}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
@@ -124,16 +128,16 @@ func TestCreateAPIKeyHandlerKeyGenError(t *testing.T) {
 }
 
 func TestCreateAPIKeyHandlerKeyGenErrorNilLogger(t *testing.T) {
-	original := generateRawKeyFunc
-	generateRawKeyFunc = func() (string, error) {
-		return "", errors.New("entropy exhausted")
-	}
-	t.Cleanup(func() { generateRawKeyFunc = original })
-
 	gin.SetMode(gin.TestMode)
 	repo := newFakeAPIKeyRepo(adminTestAPIKey())
 	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
-	adminHandler := AdminHandler{APIKeyRepo: repo, Logger: nil}
+	adminHandler := AdminHandler{
+		APIKeyRepo: repo,
+		Logger:     nil,
+		KeyGenerator: func() (string, error) {
+			return "", errors.New("entropy exhausted")
+		},
+	}
 	router := NewRouter(handler, adminHandler, nil, repo, zap.NewNop(), testRouterOptions())
 
 	body := `{"name":"my-service","scopes":["events:read"]}`
