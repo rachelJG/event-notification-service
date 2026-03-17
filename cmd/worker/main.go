@@ -80,9 +80,25 @@ func main() {
 		BatchSize:        cfg.WorkerBatchSize,
 	}
 
-	// Metrics server on port 9090
+	// Metrics + health server on port 9090
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsMux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+	metricsMux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := pool.Ping(r.Context()); err != nil {
+			log.Error("readiness check failed", zap.Error(err))
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unavailable"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 	metricsServer := &http.Server{Addr: ":9090", Handler: metricsMux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		log.Info("metrics server listening", zap.String("addr", ":9090"))

@@ -66,48 +66,69 @@ The use case calls `ValidateEvent` **before** `NewEvent`: validate input first, 
 
 - **Idempotency**: Enforced at DB level via `UNIQUE(idempotency_key, type)` index. INSERT uses `ON CONFLICT DO UPDATE SET id = events.id RETURNING id` to return the original ID on duplicates.
 - **Error mapping**: `internal/pkg/apperror` defines error codes. `internal/infrastructure/http/errmap` maps them to HTTP status codes. Handler never sets HTTP status directly from business logic. `context.Canceled` maps to 499 (nginx client-closed-request convention); `context.DeadlineExceeded` maps to 504.
-- **Middleware stack** (in order): Zap logger+recovery → request ID → security headers → Prometheus metrics → CORS → body limit → content-type enforcement → rate limiter. JWT auth is applied only to authenticated routes.
+- **Middleware stack** (in order): Zap logger+recovery → request ID → security headers → Prometheus metrics → CORS → body limit → content-type enforcement → rate limiter. API Key auth is applied only to authenticated routes.
 - **SQL safety**: `internal/infrastructure/postgres/sqlsafe.go` provides allowlist-based identifier sanitization for any dynamic SQL.
 - **DB error mapping**: `mapDBError` in `postgres/event_repository.go` translates pgx/pgconn error codes to `AppError` (23505 unique_violation → conflict, 23502 not_null_violation → invalid_argument, pgx.ErrNoRows → not_found). Context errors pass through untouched so `errmap` can handle them at the HTTP layer.
 - **Business metrics**: `events_submitted_total{event_type, result}` Prometheus counter in `infrastructure/http/metrics.go` tracks submitted events by type and outcome (success/error), separate from HTTP-level metrics in middleware.
-- **Version injection**: `Version` and `Commit` package-level vars in `cmd/api/main.go` are populated at build time via `-ldflags`. `make build` derives them from `git describe` and `git rev-parse`. Exposed on `GET /health`.
+- **Version injection**: `Version` and `Commit` package-level vars in `cmd/api/main.go` are populated at build time via `-ldflags`. `make build` derives them from `git describe` and `git rev-parse`. Exposed on `GET /health/ready`.
 
 ## HTTP API
 
 ### `POST /api/v1/events`
-Requires `Authorization: Bearer <jwt>` and `Idempotency-Key: <uuid>` headers.
+Requires `Authorization: Bearer <api-key>` header (scope: `events:write`) and `Idempotency-Key: <uuid>` header.
 
 - **202 Accepted** — event accepted; body `{"id": "..."}`, header `Location: /api/v1/events/{id}`
-- **400 Bad Request** — invalid idempotency key, bad JSON, validation error
-- **401 Unauthorized** — missing/invalid JWT
+- **400 Bad Request** — invalid idempotency key, bad JSON, validation error, invalid UUID in path
+- **401 Unauthorized** — missing/invalid API key or insufficient scopes
 - **409 Conflict** — duplicate event (same idempotency key + type, idempotent: returns original id)
 - **429 Too Many Requests** — rate limit exceeded
 
 ### `GET /api/v1/events/:id`
-Requires `Authorization: Bearer <jwt>`.
+Requires `Authorization: Bearer <api-key>` header (scope: `events:read`).
 
 - **200 OK** — body `{"id","type","payload","occurred_at","created_at"}`
-- **401 Unauthorized** — missing/invalid JWT
+- **400 Bad Request** — invalid UUID format
+- **401 Unauthorized** — missing/invalid API key or insufficient scopes
 - **404 Not Found** — event does not exist
 
-### `GET /health`
-No auth required.
+### `GET /health/live`
+No auth required. Liveness check — only verifies the process is running.
+
+- **200 OK** — `{"status":"ok"}`
+
+### `GET /health/ready`
+No auth required. Readiness check — verifies the service can handle traffic (DB reachable).
 
 - **200 OK** — `{"status":"ok","version":"...","commit":"...","db":{pool stats}}`
 - **503 Service Unavailable** — database unreachable
 
+### Admin endpoints
+
+### `POST /admin/api-keys`
+Requires API key with `admin` scope.
+
+### `GET /admin/api-keys`
+Requires API key with `admin` scope.
+
+### `DELETE /admin/api-keys/:id`
+Requires API key with `admin` scope.
+
 ### `GET /metrics`
 Prometheus metrics endpoint (no auth).
 
-## JWT Authentication
+## API Key Authentication
 
-JWT middleware (`middleware.JWTAuth`) enforces:
-- Algorithm: **HS256 only** (`jwt.WithValidMethods`) — RS256, ES256, `none` are rejected
-- Expiry: **required** (`jwt.WithExpirationRequired`) — tokens without `exp` are rejected
-- Optional **issuer** validation: set `JWT_ISSUER` env var / `RouterOptions.JWTIssuer`
-- Optional **audience** validation: set `JWT_AUDIENCE` env var / `RouterOptions.JWTAudience`
-- Minimum secret length: **32 bytes** enforced in `config.Validate()`
-- The `sub` claim is stored in the gin context under `middleware.ContextKeySubject` for downstream use (e.g. audit logging)
+The primary authentication mechanism is **long-lived API Keys** for service-to-service communication. API keys are managed via the `/admin/api-keys` endpoints.
+
+- Keys are stored as SHA-256 hashes in the `api_keys` table
+- Each key has a set of **scopes** (e.g. `events:write`, `events:read`, `admin`)
+- Middleware (`middleware.APIKeyAuth`) validates the key hash and checks required scopes
+- Keys can be revoked via `DELETE /admin/api-keys/:id`
+- The API key repository is defined as a port interface in `domain/ports/`
+
+### JWT Authentication (legacy)
+
+JWT middleware (`middleware.JWTAuth`) is still present in the codebase but no longer used in the router. It was replaced by API Key auth for service-to-service communication.
 
 ## TLS
 

@@ -3,6 +3,7 @@ package email
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -42,7 +43,7 @@ func buildMessage(from, to, subject, body string) []byte {
 	return []byte(sb.String())
 }
 
-// Send sends an email via SMTP. It respects context cancellation.
+// Send sends an email via SMTP with STARTTLS support. It respects context cancellation.
 func (s *SMTPSender) Send(ctx context.Context, to, subject, body string) error {
 	select {
 	case <-ctx.Done():
@@ -51,16 +52,10 @@ func (s *SMTPSender) Send(ctx context.Context, to, subject, body string) error {
 	}
 
 	msg := buildMessage(s.from, to, subject, body)
-	addr := net.JoinHostPort(s.host, s.port)
-
-	var auth smtp.Auth
-	if s.user != "" && s.pass != "" {
-		auth = smtp.PlainAuth("", s.user, s.pass, s.host)
-	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- smtp.SendMail(addr, auth, s.from, []string{to}, msg)
+		errCh <- s.dialAndSend(to, msg)
 	}()
 
 	select {
@@ -69,4 +64,60 @@ func (s *SMTPSender) Send(ctx context.Context, to, subject, body string) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+// dialAndSend connects to the SMTP server and attempts STARTTLS before authenticating and sending.
+func (s *SMTPSender) dialAndSend(to string, msg []byte) error {
+	addr := net.JoinHostPort(s.host, s.port)
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("smtp dial: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, s.host)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("smtp new client: %w", err)
+	}
+	defer client.Close()
+
+	// Attempt STARTTLS; skip gracefully if not supported (e.g. dev SMTP servers).
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		tlsConfig := &tls.Config{
+			ServerName: s.host,
+			MinVersion: tls.VersionTLS12,
+		}
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return fmt.Errorf("smtp starttls: %w", err)
+		}
+	}
+
+	// Authenticate if credentials are provided.
+	if s.user != "" && s.pass != "" {
+		auth := smtp.PlainAuth("", s.user, s.pass, s.host)
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("smtp auth: %w", err)
+		}
+	}
+
+	if err := client.Mail(s.from); err != nil {
+		return fmt.Errorf("smtp mail: %w", err)
+	}
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("smtp rcpt: %w", err)
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("smtp data: %w", err)
+	}
+	if _, err := w.Write(msg); err != nil {
+		return fmt.Errorf("smtp write: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("smtp data close: %w", err)
+	}
+
+	return client.Quit()
 }

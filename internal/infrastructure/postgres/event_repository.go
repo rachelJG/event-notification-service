@@ -18,6 +18,10 @@ type EventRepository struct {
 	QueryTimeout time.Duration
 }
 
+// Create stores a new event in the database. It uses idempotency to avoid
+// duplicates, allowing an explicit ID to be provided or generated
+// automatically. If an event with the same idempotency key and type already
+// exists, it updates the existing record.
 func (r EventRepository) Create(ctx context.Context, event entities.Event) (string, error) {
 	if r.QueryTimeout > 0 {
 		var cancel context.CancelFunc
