@@ -32,3 +32,6 @@ bin/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# deploy
+deploy/k8s/secret.yaml

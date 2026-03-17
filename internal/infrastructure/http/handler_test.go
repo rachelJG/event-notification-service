@@ -341,11 +341,12 @@ func TestSubmitEventHandlerLocationHeader(t *testing.T) {
 
 func TestGetEventHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	evt := entities.Event{ID: "evt-1", Type: "UserRegistered", Payload: []byte(`{"user_id":"1"}`)}
+	evtID := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+	evt := entities.Event{ID: evtID, Type: "UserRegistered", Payload: []byte(`{"user_id":"1"}`)}
 	handler := Handler{EventService: &mockEventService{getReturnEvent: evt}, Logger: zap.NewNop()}
 	router := testRouter(handler, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/evt-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/"+evtID, nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
@@ -359,8 +360,8 @@ func TestGetEventHandlerSuccess(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
-	if body["id"] != "evt-1" {
-		t.Fatalf("expected id evt-1, got %v", body["id"])
+	if body["id"] != evtID {
+		t.Fatalf("expected id %s, got %v", evtID, body["id"])
 	}
 	if body["type"] != "UserRegistered" {
 		t.Fatalf("expected type UserRegistered, got %v", body["type"])
@@ -375,7 +376,7 @@ func TestGetEventHandlerNotFound(t *testing.T) {
 	}
 	router := testRouter(handler, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/missing", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/b1c2d3e4-f5a6-7890-bcde-f12345678901", nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
@@ -388,12 +389,30 @@ func TestGetEventHandlerNotFound(t *testing.T) {
 	assertErrorCode(t, resp, "not_found")
 }
 
+func TestGetEventHandlerInvalidUUID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
+	router := testRouter(handler, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/not-a-valid-uuid", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", testRawAPIKey)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+	assertErrorCode(t, resp, "invalid_argument")
+}
+
 func TestGetEventHandlerUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
 	router := testRouter(handler, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/evt-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events/c1d2e3f4-a5b6-7890-cdef-123456789012", nil)
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 
@@ -517,7 +536,7 @@ func TestNewRouterDefaultBodyLimit(t *testing.T) {
 func TestNewRouterDefaultRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	opts := testRouterOptions()
-	opts.RateLimitRPS = 0  // triggers default fallback
+	opts.RateLimitRPS = 0   // triggers default fallback
 	opts.RateLimitBurst = 0 // triggers default fallback
 	router := testRouterWithOpts(Handler{EventService: &mockEventService{}}, nil, opts)
 	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)

@@ -137,6 +137,8 @@ func main() {
 		log.Fatal("init app", zap.Error(err))
 	}
 
+	// Start the server in a separate goroutine so that it doesn't block the main thread,
+	// allowing us to wait for termination signals and perform a graceful shutdown.
 	go func() {
 		application.logger.Info("api listening", zap.String("addr", cfg.APIAddr))
 		var serveErr error
@@ -153,6 +155,10 @@ func main() {
 	waitForShutdown(application)
 }
 
+// waitForShutdown blocks the main goroutine until it receives a termination signal
+// (SIGINT or SIGTERM). Once a signal is received, it initiates a graceful shutdown
+// of the application, including the HTTP server and database pool, within the
+// configured shutdown timeout.
 func waitForShutdown(application *app) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

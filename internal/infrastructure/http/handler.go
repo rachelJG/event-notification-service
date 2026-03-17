@@ -112,6 +112,10 @@ func idempotencyKeyFromContext(c *gin.Context) string {
 
 func (h Handler) GetEventHandler(c *gin.Context) {
 	id := c.Param("id")
+	if _, err := uuid.Parse(id); err != nil {
+		errorJSON(c, http.StatusBadRequest, "invalid_argument", "invalid event ID format")
+		return
+	}
 	event, err := h.EventService.GetEvent(c.Request.Context(), id)
 	if err != nil {
 		h.logError(c, err)
