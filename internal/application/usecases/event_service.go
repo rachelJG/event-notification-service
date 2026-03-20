@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/rachelJG/event-notification-service/internal/application/validation"
-	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 	"github.com/rachelJG/event-notification-service/internal/domain/entities"
 	"github.com/rachelJG/event-notification-service/internal/domain/ports"
+	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 )
 
 // EventService implements all event-related use cases.
@@ -16,7 +16,7 @@ type EventService struct {
 }
 
 // SubmitEvent validates and persists a new event.
-func (s EventService) SubmitEvent(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
+func (s EventService) SubmitEvent(ctx context.Context, eventType string, payload []byte, idempotencyKey, clientID string) (string, error) {
 	if err := validation.ValidateEvent(eventType, payload); err != nil {
 		return "", apperror.InvalidArgument(err.Error(), err)
 	}
@@ -24,6 +24,9 @@ func (s EventService) SubmitEvent(ctx context.Context, eventType string, payload
 	if err != nil {
 		return "", apperror.InvalidArgument(err.Error(), err)
 	}
+
+	// Assign client_id from the authenticated API key (optional, may be empty for backward compatibility)
+	event.ClientID = clientID
 
 	id, err := s.Repo.Create(ctx, event)
 	if err != nil {

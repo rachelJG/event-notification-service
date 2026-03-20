@@ -17,6 +17,9 @@ import (
 // ContextKeyAPIKeyName is the gin context key where the API key name is stored.
 const ContextKeyAPIKeyName = "api_key_name"
 
+// ContextKeyClientID is the gin context key where the client_id from metadata is stored.
+const ContextKeyClientID = "client_id"
+
 // APIKeyOptions configures API Key authentication behaviour.
 type APIKeyOptions struct {
 	Repo           domainports.APIKeyRepository
@@ -68,12 +71,14 @@ func APIKeyAuth(opts APIKeyOptions) gin.HandlerFunc {
 			opts.Logger.Info("auth success",
 				zap.String("event", "auth"),
 				zap.String("api_key_name", apiKey.Name),
+				zap.String("client_id", apiKey.ClientID()),
 				zap.String("remote_ip", c.ClientIP()),
 				zap.String("request_id", c.GetString("request_id")),
 			)
 		}
 
 		c.Set(ContextKeyAPIKeyName, apiKey.Name)
+		c.Set(ContextKeyClientID, apiKey.ClientID())
 
 		// Update last_used_at asynchronously to avoid adding latency.
 		go func(repo domainports.APIKeyRepository, id string) {

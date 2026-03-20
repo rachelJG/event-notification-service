@@ -30,7 +30,12 @@ Include at least the following cases for each function:
 - Use `gomock.Any()` only when the argument value is truly irrelevant to the test
 
 ### Execution
-After generating the tests, run them:
+After generating the tests, run `go vet` first to catch common issues:
+```bash
+go vet ./path/to/package/...
+```
+
+Then run the tests:
 ```bash
 go test -v -race -count=1 ./path/to/package/...
 ```

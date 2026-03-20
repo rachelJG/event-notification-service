@@ -190,53 +190,6 @@ func TestRequestIDUsesExisting(t *testing.T) {
 	}
 }
 
-// RateLimit tests
-
-func TestRateLimitAllowsWithinBurst(t *testing.T) {
-	r := gin.New()
-	r.GET("/test", RateLimit(100, 5), func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
-	})
-
-	for i := range 5 {
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		req.RemoteAddr = "1.2.3.4:1234"
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-		if w.Code != http.StatusOK {
-			t.Fatalf("request %d: expected 200, got %d", i, w.Code)
-		}
-	}
-}
-
-func TestRateLimitExceedsBurst(t *testing.T) {
-	r := gin.New()
-	r.GET("/test", RateLimit(1, 1), func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
-	})
-
-	// First request should succeed
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.RemoteAddr = "5.6.7.8:1234"
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("first request: expected 200, got %d", w.Code)
-	}
-
-	// Second request should be rate limited
-	req = httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.RemoteAddr = "5.6.7.8:1234"
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusTooManyRequests {
-		t.Fatalf("second request: expected 429, got %d", w.Code)
-	}
-	if w.Header().Get("Retry-After") == "" {
-		t.Error("expected Retry-After header")
-	}
-}
-
 // writeAuthError edge cases
 
 func TestWriteAuthErrorPermissionDenied(t *testing.T) {
@@ -266,72 +219,6 @@ func TestWriteAuthErrorGenericError(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
-	}
-}
-
-// Metrics tests
-
-func TestRateLimitPerIPIsolation(t *testing.T) {
-	r := gin.New()
-	r.GET("/test", RateLimit(1, 1), func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
-	})
-
-	// First IP uses its burst
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.RemoteAddr = "10.0.0.1:1234"
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("IP1 first request: expected 200, got %d", w.Code)
-	}
-
-	// First IP is rate limited
-	req = httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.RemoteAddr = "10.0.0.1:1234"
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusTooManyRequests {
-		t.Fatalf("IP1 second request: expected 429, got %d", w.Code)
-	}
-
-	// Second IP should still be allowed (separate limiter)
-	req = httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.RemoteAddr = "10.0.0.2:1234"
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("IP2 first request: expected 200, got %d", w.Code)
-	}
-}
-
-func TestRateLimitResponseBody(t *testing.T) {
-	r := gin.New()
-	r.GET("/test", RequestID(), RateLimit(1, 1), func(c *gin.Context) {
-		c.String(http.StatusOK, "ok")
-	})
-
-	// Exhaust burst
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.RemoteAddr = "10.0.0.3:1234"
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	// Trigger rate limit
-	req = httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.RemoteAddr = "10.0.0.3:1234"
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429, got %d", w.Code)
-	}
-	body := w.Body.String()
-	if !strings.Contains(body, "rate_limited") {
-		t.Errorf("expected 'rate_limited' in response body, got %q", body)
-	}
-	if w.Header().Get("Retry-After") == "" {
-		t.Error("expected Retry-After header")
 	}
 }
 

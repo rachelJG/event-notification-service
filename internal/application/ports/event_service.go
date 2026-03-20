@@ -8,6 +8,6 @@ import (
 
 // Input port: event service exposed to driving adapters (HTTP, gRPC, etc.).
 type EventService interface {
-	SubmitEvent(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error)
+	SubmitEvent(ctx context.Context, eventType string, payload []byte, idempotencyKey, clientID string) (string, error)
 	GetEvent(ctx context.Context, id string) (entities.Event, error)
 }

@@ -75,7 +75,9 @@ The use case calls `ValidateEvent` **before** `NewEvent`: validate input first, 
 ## HTTP API
 
 ### `POST /api/v1/events`
-Requires `Authorization: Bearer <api-key>` header (scope: `events:write`) and `Idempotency-Key: <uuid>` header.
+Requires `X-API-Key: <api-key>` header (scope: `events:write`) and `Idempotency-Key: <uuid>` header.
+
+The `client_id` from the API key's metadata is automatically captured and stored with the event for auditing and analytics.
 
 - **202 Accepted** — event accepted; body `{"id": "..."}`, header `Location: /api/v1/events/{id}`
 - **400 Bad Request** — invalid idempotency key, bad JSON, validation error, invalid UUID in path
@@ -84,9 +86,10 @@ Requires `Authorization: Bearer <api-key>` header (scope: `events:write`) and `I
 - **429 Too Many Requests** — rate limit exceeded
 
 ### `GET /api/v1/events/:id`
-Requires `Authorization: Bearer <api-key>` header (scope: `events:read`).
+Requires `X-API-Key: <api-key>` header (scope: `events:read`).
 
-- **200 OK** — body `{"id","type","payload","occurred_at","created_at"}`
+- **200 OK** — body `{"id","type","payload","client_id","occurred_at","created_at"}`
+  - `client_id` is included if the event was submitted with an authenticated API key (optional for backward compatibility)
 - **400 Bad Request** — invalid UUID format
 - **401 Unauthorized** — missing/invalid API key or insufficient scopes
 - **404 Not Found** — event does not exist
@@ -105,13 +108,45 @@ No auth required. Readiness check — verifies the service can handle traffic (D
 ### Admin endpoints
 
 ### `POST /admin/api-keys`
-Requires API key with `admin` scope.
+Requires API key with `admin` scope. Creates a new API key with client metadata.
+
+**Request body:**
+```json
+{
+  "name": "Acme Corp - Production",
+  "scopes": ["events:write", "events:read"],
+  "metadata": {
+    "client_id": "acme-corp",
+    "organization": "Acme Corporation",
+    "contact_email": "api@acme.com"
+  }
+}
+```
+
+**Note:** `metadata.client_id` is required. Additional metadata fields are optional but recommended for tracking and auditing.
+
+**Response (201 Created):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Acme Corp - Production",
+  "scopes": ["events:write", "events:read"],
+  "metadata": {
+    "client_id": "acme-corp",
+    "organization": "Acme Corporation",
+    "contact_email": "api@acme.com"
+  },
+  "key": "abc123...xyz"
+}
+```
+
+**Important:** The raw `key` is returned only once on creation and cannot be retrieved later.
 
 ### `GET /admin/api-keys`
-Requires API key with `admin` scope.
+Requires API key with `admin` scope. Lists all API keys with their metadata (excluding the raw key).
 
 ### `DELETE /admin/api-keys/:id`
-Requires API key with `admin` scope.
+Requires API key with `admin` scope. Revokes an API key (sets `is_active` to false).
 
 ### `GET /metrics`
 Prometheus metrics endpoint (no auth).
@@ -122,7 +157,13 @@ The primary authentication mechanism is **long-lived API Keys** for service-to-s
 
 - Keys are stored as SHA-256 hashes in the `api_keys` table
 - Each key has a set of **scopes** (e.g. `events:write`, `events:read`, `admin`)
-- Middleware (`middleware.APIKeyAuth`) validates the key hash and checks required scopes
+- Each key has **metadata** (JSONB) containing client information:
+  - `client_id` (required): unique identifier for the client/organization
+  - `organization` (optional): human-readable organization name
+  - `contact_email` (optional): contact email for the client
+  - Additional custom fields as needed
+- Middleware (`middleware.APIKeyAuth`) validates the key hash, checks required scopes, and propagates `client_id` to the request context for auditing
+- The `client_id` is logged with each authenticated request and available via `c.GetString(middleware.ContextKeyClientID)`
 - Keys can be revoked via `DELETE /admin/api-keys/:id`
 - The API key repository is defined as a port interface in `domain/ports/`
 

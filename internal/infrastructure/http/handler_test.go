@@ -28,7 +28,7 @@ type mockEventService struct {
 	getReturnErr       error
 }
 
-func (m *mockEventService) SubmitEvent(ctx context.Context, eventType string, payload []byte, idempotencyKey string) (string, error) {
+func (m *mockEventService) SubmitEvent(ctx context.Context, eventType string, payload []byte, idempotencyKey, clientID string) (string, error) {
 	m.submitCalled = true
 	m.submitReceivedType = eventType
 	m.submitReceivedKey = idempotencyKey
@@ -96,6 +96,7 @@ func testAPIKeyEntity() entities.APIKey {
 		KeyHash:  middleware.HashAPIKey(testRawAPIKey),
 		Name:     "test-key",
 		Scopes:   []string{"events:write", "events:read"},
+		Metadata: map[string]string{"client_id": "test-client"},
 		IsActive: true,
 	}
 }

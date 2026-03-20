@@ -23,24 +23,27 @@ type AdminHandler struct {
 }
 
 type createAPIKeyRequest struct {
-	Name   string   `json:"name" binding:"required"`
-	Scopes []string `json:"scopes" binding:"required"`
+	Name     string            `json:"name" binding:"required"`
+	Scopes   []string          `json:"scopes" binding:"required"`
+	Metadata map[string]string `json:"metadata"`
 }
 
 type createAPIKeyResponse struct {
-	ID     string   `json:"id"`
-	Name   string   `json:"name"`
-	Scopes []string `json:"scopes"`
-	Key    string   `json:"key"` // returned only on creation
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Scopes   []string          `json:"scopes"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+	Key      string            `json:"key"` // returned only on creation
 }
 
 type apiKeyListItem struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Scopes     []string   `json:"scopes"`
-	IsActive   bool       `json:"is_active"`
-	CreatedAt  time.Time  `json:"created_at"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	ID         string            `json:"id"`
+	Name       string            `json:"name"`
+	Scopes     []string          `json:"scopes"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+	IsActive   bool              `json:"is_active"`
+	CreatedAt  time.Time         `json:"created_at"`
+	LastUsedAt *time.Time        `json:"last_used_at,omitempty"`
 }
 
 // CreateAPIKeyHandler generates a new API key, stores its SHA-256 hash, and
@@ -52,15 +55,19 @@ func (h AdminHandler) CreateAPIKeyHandler(c *gin.Context) {
 		return
 	}
 
+	// Validate metadata: client_id is required
+	if req.Metadata == nil || req.Metadata["client_id"] == "" {
+		errorJSON(c, http.StatusBadRequest, "invalid_argument", "metadata.client_id is required")
+		return
+	}
+
 	genKey := h.KeyGenerator
 	if genKey == nil {
 		genKey = generateRawKey
 	}
 	rawKey, err := genKey()
 	if err != nil {
-		if h.Logger != nil {
-			h.Logger.Error("failed to generate api key", zap.Error(err))
-		}
+		h.Logger.Error("failed to generate api key", zap.Error(err))
 		errorJSON(c, http.StatusInternalServerError, "internal", "failed to generate key")
 		return
 	}
@@ -73,23 +80,23 @@ func (h AdminHandler) CreateAPIKeyHandler(c *gin.Context) {
 		KeyHash:   keyHash,
 		Name:      req.Name,
 		Scopes:    req.Scopes,
+		Metadata:  req.Metadata,
 		IsActive:  true,
 		CreatedAt: time.Now().UTC(),
 	}
 
 	if err := h.APIKeyRepo.Create(c.Request.Context(), apiKey); err != nil {
-		if h.Logger != nil {
-			h.Logger.Error("failed to store api key", zap.Error(err))
-		}
+		h.Logger.Error("failed to store api key", zap.Error(err))
 		errorJSON(c, http.StatusInternalServerError, "internal", "failed to create key")
 		return
 	}
 
 	c.JSON(http.StatusCreated, createAPIKeyResponse{
-		ID:     id,
-		Name:   req.Name,
-		Scopes: req.Scopes,
-		Key:    rawKey,
+		ID:       id,
+		Name:     req.Name,
+		Scopes:   req.Scopes,
+		Metadata: req.Metadata,
+		Key:      rawKey,
 	})
 }
 
@@ -97,9 +104,7 @@ func (h AdminHandler) CreateAPIKeyHandler(c *gin.Context) {
 func (h AdminHandler) ListAPIKeysHandler(c *gin.Context) {
 	keys, err := h.APIKeyRepo.List(c.Request.Context())
 	if err != nil {
-		if h.Logger != nil {
-			h.Logger.Error("failed to list api keys", zap.Error(err))
-		}
+		h.Logger.Error("failed to list api keys", zap.Error(err))
 		errorJSON(c, http.StatusInternalServerError, "internal", "failed to list keys")
 		return
 	}
@@ -110,6 +115,7 @@ func (h AdminHandler) ListAPIKeysHandler(c *gin.Context) {
 			ID:         k.ID,
 			Name:       k.Name,
 			Scopes:     k.Scopes,
+			Metadata:   k.Metadata,
 			IsActive:   k.IsActive,
 			CreatedAt:  k.CreatedAt,
 			LastUsedAt: k.LastUsedAt,

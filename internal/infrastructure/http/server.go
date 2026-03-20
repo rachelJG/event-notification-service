@@ -49,6 +49,7 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 	}
 	router.Use(middleware.BodyLimit(bodyLimit))
 	router.Use(middleware.RequireJSONContentType())
+
 	rps := opts.RateLimitRPS
 	if rps <= 0 {
 		rps = 10
@@ -57,18 +58,21 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 	if burst <= 0 {
 		burst = 20
 	}
-	router.Use(middleware.RateLimit(rps, burst))
+
+	// Unauthenticated endpoints — IP-based rate limiting as DDoS protection.
+	publicGroup := router.Group("/")
+	publicGroup.Use(middleware.RateLimit(rps, burst))
 
 	// Liveness: only checks that the process is running — no external I/O.
 	// Used by Kubernetes livenessProbe; a failure here triggers a pod restart.
-	router.GET("/health/live", func(c *gin.Context) {
+	publicGroup.GET("/health/live", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
 	// Readiness: checks that the service can handle traffic (DB reachable).
 	// Used by Kubernetes readinessProbe; a failure removes the pod from rotation
 	// without restarting it.
-	router.GET("/health/ready", func(c *gin.Context) {
+	publicGroup.GET("/health/ready", func(c *gin.Context) {
 		if health == nil {
 			if logger != nil {
 				logger.Error("readiness check failed", zap.Error(errors.New("health checker is nil")))
@@ -90,9 +94,9 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 			"db":      health.Stats(),
 		})
 	})
-	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	publicGroup.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
-	// Authenticated event routes — require API key with appropriate scopes.
+	// Authenticated event routes — API key auth + API-key-based rate limiting.
 	v1 := router.Group("/api/v1")
 	v1.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
@@ -109,10 +113,11 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 		RequiredScopes: []string{"events:read"},
 		Logger:         logger,
 	})
-	v1.POST("/events", eventsWrite, handler.SubmitEventHandler)
-	v1.GET("/events/:id", eventsRead, handler.GetEventHandler)
+	apiKeyRL := middleware.APIKeyRateLimit(rps, burst)
+	v1.POST("/events", eventsWrite, apiKeyRL, handler.SubmitEventHandler)
+	v1.GET("/events/:id", eventsRead, apiKeyRL, handler.GetEventHandler)
 
-	// Admin routes — require API key with "admin" scope.
+	// Admin routes — require API key with "admin" scope + API-key-based rate limiting.
 	admin := router.Group("/admin")
 	admin.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
@@ -123,9 +128,9 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 		RequiredScopes: []string{"admin"},
 		Logger:         logger,
 	})
-	admin.POST("/api-keys", adminAuth, adminHandler.CreateAPIKeyHandler)
-	admin.GET("/api-keys", adminAuth, adminHandler.ListAPIKeysHandler)
-	admin.DELETE("/api-keys/:id", adminAuth, adminHandler.RevokeAPIKeyHandler)
+	admin.POST("/api-keys", adminAuth, apiKeyRL, adminHandler.CreateAPIKeyHandler)
+	admin.GET("/api-keys", adminAuth, apiKeyRL, adminHandler.ListAPIKeysHandler)
+	admin.DELETE("/api-keys/:id", adminAuth, apiKeyRL, adminHandler.RevokeAPIKeyHandler)
 
 	return router
 }

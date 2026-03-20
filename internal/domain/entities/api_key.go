@@ -8,6 +8,7 @@ type APIKey struct {
 	KeyHash    string
 	Name       string
 	Scopes     []string
+	Metadata   map[string]string // Client metadata (client_id, organization, contact_email, etc.)
 	IsActive   bool
 	CreatedAt  time.Time
 	LastUsedAt *time.Time
@@ -21,4 +22,12 @@ func (k APIKey) HasScope(scope string) bool {
 		}
 	}
 	return false
+}
+
+// ClientID returns the client_id from metadata, or empty string if not set.
+func (k APIKey) ClientID() string {
+	if k.Metadata == nil {
+		return ""
+	}
+	return k.Metadata["client_id"]
 }
