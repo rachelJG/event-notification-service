@@ -42,7 +42,10 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 	c.Set("event_type", req.EventType)
 	c.Set("idempotency_key", c.GetHeader(idempotencyHeader))
 
-	id, err := h.EventService.SubmitEvent(c.Request.Context(), req.EventType, req.Payload, c.GetHeader(idempotencyHeader))
+	// Get client_id from authenticated API key context (may be empty for backward compatibility)
+	clientID := c.GetString("client_id")
+
+	id, err := h.EventService.SubmitEvent(c.Request.Context(), req.EventType, req.Payload, c.GetHeader(idempotencyHeader), clientID)
 	if err != nil {
 		recordEventSubmitted(req.EventType, "error")
 		h.logError(c, err)
@@ -53,6 +56,12 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 	}
 
 	recordEventSubmitted(req.EventType, "success")
+
+	// Set the Location header to the URL of the newly created event.
+	// This is a standard HTTP response header used to indicate the URL of the
+	// resource that has been created. In this case, it specifies the URL of the
+	// newly created event. The client can then use this URL to retrieve the
+	// event if needed.
 	c.Header("Location", "/api/v1/events/"+id)
 	c.JSON(http.StatusAccepted, dto.SubmitEventResponse{ID: id})
 }
@@ -128,6 +137,7 @@ func (h Handler) GetEventHandler(c *gin.Context) {
 		ID:         event.ID,
 		Type:       event.Type,
 		Payload:    event.Payload,
+		ClientID:   event.ClientID,
 		OccurredAt: event.OccurredAt,
 		CreatedAt:  event.CreatedAt,
 	})

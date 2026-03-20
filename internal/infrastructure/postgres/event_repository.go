@@ -34,13 +34,18 @@ func (r EventRepository) Create(ctx context.Context, event entities.Event) (stri
 		id = uuid.NewString()
 	}
 
+	var clientID *string
+	if event.ClientID != "" {
+		clientID = &event.ClientID
+	}
+
 	err := r.Pool.QueryRow(ctx, `
-		INSERT INTO events (id, type, idempotency_key, payload, occurred_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO events (id, type, idempotency_key, payload, client_id, occurred_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (idempotency_key, type)
 		DO UPDATE SET id = events.id
 		RETURNING id
-	`, id, event.Type, event.IdempotencyKey, event.Payload, event.OccurredAt, time.Now().UTC()).Scan(&id)
+	`, id, event.Type, event.IdempotencyKey, event.Payload, clientID, event.OccurredAt, time.Now().UTC()).Scan(&id)
 	if err != nil {
 		return "", mapDBError(err)
 	}
@@ -56,11 +61,15 @@ func (r EventRepository) GetByID(ctx context.Context, id string) (entities.Event
 	}
 
 	var e entities.Event
+	var clientID *string
 	err := r.Pool.QueryRow(ctx, `
-		SELECT id, type, idempotency_key, payload, occurred_at, created_at
+		SELECT id, type, idempotency_key, payload, client_id, occurred_at, created_at
 		FROM events
 		WHERE id = $1
-	`, id).Scan(&e.ID, &e.Type, &e.IdempotencyKey, &e.Payload, &e.OccurredAt, &e.CreatedAt)
+	`, id).Scan(&e.ID, &e.Type, &e.IdempotencyKey, &e.Payload, &clientID, &e.OccurredAt, &e.CreatedAt)
+	if clientID != nil {
+		e.ClientID = *clientID
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return entities.Event{}, apperror.NotFound("event not found", err)
@@ -86,7 +95,7 @@ func (r EventRepository) ClaimPending(ctx context.Context, limit int) ([]entitie
 			FOR UPDATE SKIP LOCKED
 			LIMIT $1
 		)
-		RETURNING id, type, idempotency_key, payload, occurred_at, created_at
+		RETURNING id, type, idempotency_key, payload, client_id, occurred_at, created_at
 	`, limit)
 	if err != nil {
 		return nil, mapDBError(err)
@@ -96,8 +105,12 @@ func (r EventRepository) ClaimPending(ctx context.Context, limit int) ([]entitie
 	var events []entities.Event
 	for rows.Next() {
 		var e entities.Event
-		if err := rows.Scan(&e.ID, &e.Type, &e.IdempotencyKey, &e.Payload, &e.OccurredAt, &e.CreatedAt); err != nil {
+		var clientID *string
+		if err := rows.Scan(&e.ID, &e.Type, &e.IdempotencyKey, &e.Payload, &clientID, &e.OccurredAt, &e.CreatedAt); err != nil {
 			return nil, mapDBError(err)
+		}
+		if clientID != nil {
+			e.ClientID = *clientID
 		}
 		events = append(events, e)
 	}

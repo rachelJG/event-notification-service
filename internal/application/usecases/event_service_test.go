@@ -49,7 +49,7 @@ func TestSubmitEventSuccess(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := EventService{Repo: repo}
 
-	id, err := svc.SubmitEvent(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1")
+	id, err := svc.SubmitEvent(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1", "test-client")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -62,13 +62,16 @@ func TestSubmitEventSuccess(t *testing.T) {
 	if repo.lastEvent.IdempotencyKey != "idem-1" {
 		t.Fatalf("expected idempotency key to be stored")
 	}
+	if repo.lastEvent.ClientID != "test-client" {
+		t.Fatalf("expected client_id to be stored, got %s", repo.lastEvent.ClientID)
+	}
 }
 
 func TestSubmitEventValidationError(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := EventService{Repo: repo}
 
-	_, err := svc.SubmitEvent(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"","email":"a@b.com","name":"A"}`), "idem-1")
+	_, err := svc.SubmitEvent(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"","email":"a@b.com","name":"A"}`), "idem-1", "")
 	if err == nil {
 		t.Fatalf("expected validation error")
 	}
@@ -78,7 +81,7 @@ func TestSubmitEventRepoError(t *testing.T) {
 	repo := &fakeRepo{err: errors.New("db error")}
 	svc := EventService{Repo: repo}
 
-	_, err := svc.SubmitEvent(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1")
+	_, err := svc.SubmitEvent(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1", "")
 	if err == nil {
 		t.Fatalf("expected repo error")
 	}
@@ -88,7 +91,7 @@ func TestSubmitEventMissingIdempotencyKey(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := EventService{Repo: repo}
 
-	_, err := svc.SubmitEvent(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "")
+	_, err := svc.SubmitEvent(context.Background(), entities.EventTypeUserRegistered, []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "", "")
 	if err == nil {
 		t.Fatalf("expected idempotency key error")
 	}
@@ -98,7 +101,7 @@ func TestSubmitEventEmptyEventType(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := EventService{Repo: repo}
 
-	_, err := svc.SubmitEvent(context.Background(), "", []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1")
+	_, err := svc.SubmitEvent(context.Background(), "", []byte(`{"user_id":"1","email":"a@b.com","name":"A"}`), "idem-1", "")
 	if err == nil {
 		t.Fatal("expected error for empty event_type")
 	}
@@ -108,7 +111,7 @@ func TestSubmitEventUnsupportedEventType(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := EventService{Repo: repo}
 
-	_, err := svc.SubmitEvent(context.Background(), "UnknownType", []byte(`{"user_id":"1"}`), "idem-1")
+	_, err := svc.SubmitEvent(context.Background(), "UnknownType", []byte(`{"user_id":"1"}`), "idem-1", "")
 	if err == nil {
 		t.Fatal("expected error for unsupported event_type")
 	}

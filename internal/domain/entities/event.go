@@ -58,6 +58,7 @@ type Event struct {
 	Type           string
 	IdempotencyKey string
 	Payload        []byte
+	ClientID       string // Client identifier from API key metadata (optional for backward compatibility)
 	OccurredAt     time.Time
 	CreatedAt      time.Time
 }

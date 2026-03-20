@@ -23,6 +23,7 @@ func adminTestAPIKey() entities.APIKey {
 		KeyHash:  middleware.HashAPIKey(testRawAPIKey),
 		Name:     "admin-test-key",
 		Scopes:   []string{"admin"},
+		Metadata: map[string]string{"client_id": "test-admin"},
 		IsActive: true,
 	}
 }
@@ -40,7 +41,7 @@ func adminTestRouter() (*gin.Engine, *fakeAPIKeyRepo) {
 func TestCreateAPIKeyHandlerSuccess(t *testing.T) {
 	router, _ := adminTestRouter()
 
-	body := `{"name":"my-service","scopes":["events:read","events:write"]}`
+	body := `{"name":"my-service","scopes":["events:read","events:write"],"metadata":{"client_id":"acme-corp","organization":"Acme Corp"}}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
@@ -68,6 +69,9 @@ func TestCreateAPIKeyHandlerSuccess(t *testing.T) {
 	if len(result.Scopes) != 2 {
 		t.Errorf("expected 2 scopes, got %d", len(result.Scopes))
 	}
+	if result.Metadata["client_id"] != "acme-corp" {
+		t.Errorf("expected client_id acme-corp, got %q", result.Metadata["client_id"])
+	}
 }
 
 func TestCreateAPIKeyHandlerInvalidJSON(t *testing.T) {
@@ -88,7 +92,7 @@ func TestCreateAPIKeyHandlerInvalidJSON(t *testing.T) {
 func TestCreateAPIKeyHandlerMissingName(t *testing.T) {
 	router, _ := adminTestRouter()
 
-	body := `{"scopes":["events:read"]}`
+	body := `{"scopes":["events:read"],"metadata":{"client_id":"test"}}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
@@ -98,6 +102,46 @@ func TestCreateAPIKeyHandlerMissingName(t *testing.T) {
 
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+}
+
+func TestCreateAPIKeyHandlerMissingClientID(t *testing.T) {
+	router, _ := adminTestRouter()
+
+	body := `{"name":"my-service","scopes":["events:read"]}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", testRawAPIKey)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d; body: %s", resp.Code, resp.Body.String())
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if !bytes.Contains(resp.Body.Bytes(), []byte("client_id")) {
+		t.Error("expected error message to mention client_id")
+	}
+}
+
+func TestCreateAPIKeyHandlerEmptyClientID(t *testing.T) {
+	router, _ := adminTestRouter()
+
+	body := `{"name":"my-service","scopes":["events:read"],"metadata":{"client_id":""}}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", testRawAPIKey)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d; body: %s", resp.Code, resp.Body.String())
 	}
 }
 
@@ -114,7 +158,7 @@ func TestCreateAPIKeyHandlerKeyGenError(t *testing.T) {
 	}
 	router := NewRouter(handler, adminHandler, nil, repo, zap.NewNop(), testRouterOptions())
 
-	body := `{"name":"my-service","scopes":["events:read"]}`
+	body := `{"name":"my-service","scopes":["events:read"],"metadata":{"client_id":"test"}}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
@@ -140,7 +184,7 @@ func TestCreateAPIKeyHandlerKeyGenErrorNilLogger(t *testing.T) {
 	}
 	router := NewRouter(handler, adminHandler, nil, repo, zap.NewNop(), testRouterOptions())
 
-	body := `{"name":"my-service","scopes":["events:read"]}`
+	body := `{"name":"my-service","scopes":["events:read"],"metadata":{"client_id":"test"}}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
@@ -160,7 +204,7 @@ func TestCreateAPIKeyHandlerRepoError(t *testing.T) {
 	adminHandler := AdminHandler{APIKeyRepo: failRepo, Logger: zap.NewNop()}
 	router := NewRouter(handler, adminHandler, nil, failRepo, zap.NewNop(), testRouterOptions())
 
-	body := `{"name":"fail-key","scopes":["events:read"]}`
+	body := `{"name":"fail-key","scopes":["events:read"],"metadata":{"client_id":"test"}}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
@@ -180,7 +224,7 @@ func TestCreateAPIKeyHandlerNilLogger(t *testing.T) {
 	adminHandler := AdminHandler{APIKeyRepo: failRepo, Logger: nil}
 	router := NewRouter(handler, adminHandler, nil, failRepo, zap.NewNop(), testRouterOptions())
 
-	body := `{"name":"fail-key","scopes":["events:read"]}`
+	body := `{"name":"fail-key","scopes":["events:read"],"metadata":{"client_id":"test"}}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)

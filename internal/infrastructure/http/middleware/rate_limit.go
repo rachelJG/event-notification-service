@@ -11,42 +11,31 @@ import (
 	"golang.org/x/time/rate"
 )
 
-type ipLimiter struct {
+type visitor struct {
 	limiter  *rate.Limiter
 	lastSeen time.Time
 }
 
+// RateLimit applies IP-based rate limiting. Use this for unauthenticated
+// endpoints (health, metrics) where there is no API key to identify the caller.
 func RateLimit(requestsPerSecond float64, burst int) gin.HandlerFunc {
 	var (
 		mu       sync.Mutex
-		visitors = make(map[string]*ipLimiter)
+		visitors = make(map[string]*visitor)
 	)
 
 	retryAfter := strconv.Itoa(int(math.Ceil(1.0 / requestsPerSecond)))
 
-	// cleanup goroutine to avoid unbounded growth
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			mu.Lock()
-			for ip, v := range visitors {
-				if time.Since(v.lastSeen) > 10*time.Minute {
-					delete(visitors, ip)
-				}
-			}
-			mu.Unlock()
-		}
-	}()
+	go cleanupLoop(&mu, visitors)
 
-	getLimiter := func(ip string) *rate.Limiter {
+	getLimiter := func(key string) *rate.Limiter {
 		mu.Lock()
 		defer mu.Unlock()
 
-		v, ok := visitors[ip]
+		v, ok := visitors[key]
 		if !ok {
 			limiter := rate.NewLimiter(rate.Limit(requestsPerSecond), burst)
-			visitors[ip] = &ipLimiter{limiter: limiter, lastSeen: time.Now()}
+			visitors[key] = &visitor{limiter: limiter, lastSeen: time.Now()}
 			return limiter
 		}
 		v.lastSeen = time.Now()
@@ -62,5 +51,63 @@ func RateLimit(requestsPerSecond float64, burst int) gin.HandlerFunc {
 			return
 		}
 		c.Next()
+	}
+}
+
+// APIKeyRateLimit applies rate limiting keyed by the authenticated API key name.
+// It must be placed after APIKeyAuth middleware so that ContextKeyAPIKeyName is
+// set in the gin context. If no API key name is found (should not happen on
+// authenticated routes), it falls back to IP-based limiting.
+func APIKeyRateLimit(requestsPerSecond float64, burst int) gin.HandlerFunc {
+	var (
+		mu       sync.Mutex
+		visitors = make(map[string]*visitor)
+	)
+
+	retryAfter := strconv.Itoa(int(math.Ceil(1.0 / requestsPerSecond)))
+
+	go cleanupLoop(&mu, visitors)
+
+	getLimiter := func(key string) *rate.Limiter {
+		mu.Lock()
+		defer mu.Unlock()
+
+		v, ok := visitors[key]
+		if !ok {
+			limiter := rate.NewLimiter(rate.Limit(requestsPerSecond), burst)
+			visitors[key] = &visitor{limiter: limiter, lastSeen: time.Now()}
+			return limiter
+		}
+		v.lastSeen = time.Now()
+		return v.limiter
+	}
+
+	return func(c *gin.Context) {
+		key := c.GetString(ContextKeyAPIKeyName)
+		if key == "" {
+			key = "ip:" + c.ClientIP()
+		}
+
+		limiter := getLimiter(key)
+		if !limiter.Allow() {
+			c.Header("Retry-After", retryAfter)
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded", "code": "rate_limited", "request_id": c.GetString("request_id")})
+			return
+		}
+		c.Next()
+	}
+}
+
+func cleanupLoop(mu *sync.Mutex, visitors map[string]*visitor) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		mu.Lock()
+		for key, v := range visitors {
+			if time.Since(v.lastSeen) > 10*time.Minute {
+				delete(visitors, key)
+			}
+		}
+		mu.Unlock()
 	}
 }

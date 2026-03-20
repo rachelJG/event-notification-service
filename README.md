@@ -15,7 +15,8 @@ This service implements a **complete event-driven notification pipeline** with:
 - **REST API** for event ingestion with idempotency guarantees
 - **Asynchronous Worker** for event processing and notification delivery
 - **Email notifications** with templating support per event type
-- **Production hardening**: rate limiting, JWT auth, CORS, security headers, graceful shutdown
+- **Production hardening**: rate limiting, API Key authentication, CORS, security headers, graceful shutdown
+- **Client tracking**: Automatic capture of client metadata for auditing and analytics
 - **Full observability**: Prometheus metrics, structured logging, health checks
 - **Clean architecture**: Hexagonal/Ports & Adapters pattern with zero domain dependencies
 
@@ -27,7 +28,7 @@ This service implements a **complete event-driven notification pipeline** with:
 | **Storage** | PostgreSQL 15 | ACID guarantees, transactional workflows, idempotency via constraints |
 | **Processing** | Async worker (polling) | Decouples producers from delivery, resilient to external failures |
 | **Architecture** | Hexagonal | Domain isolation, testability, infrastructure independence |
-| **Auth** | JWT (HS256) | Stateless, industry standard, configurable validation |
+| **Auth** | API Keys (SHA-256) | Long-lived credentials for service-to-service communication with client tracking |
 
 ---
 
@@ -151,7 +152,7 @@ event-notification-service/
 
 ### Core Functionality
 
-- ✅ **Event Ingestion**: REST API with JWT authentication and idempotency keys
+- ✅ **Event Ingestion**: REST API with API Key authentication and idempotency keys
 - ✅ **Supported Event Types**:
   - `UserRegistered` — User registration notifications
   - `PasswordResetRequested` — Password reset emails
@@ -165,8 +166,8 @@ event-notification-service/
 ### Production Hardening
 
 - 🔒 **Security**:
-  - JWT authentication (HS256, min 32-byte secret)
-  - Optional issuer/audience validation
+  - API Key authentication (SHA-256 hashed, scope-based authorization)
+  - Client tracking via metadata (client_id, organization, contact)
   - Rate limiting with `X-Forwarded-For` support
   - Security headers (HSTS, X-Content-Type-Options, X-Frame-Options)
   - Trusted proxy configuration
@@ -177,9 +178,9 @@ event-notification-service/
   - Dead letter queue support (status: failed)
 - 📊 **Observability**:
   - Prometheus metrics (HTTP, DB pool, business metrics)
-  - Structured logging (Zap) with request IDs
-  - JWT audit logging (auth success/failure with IP)
-  - Health check endpoints (`/health` with DB stats)
+  - Structured logging (Zap) with request IDs and client_id tracking
+  - API Key audit logging (auth success/failure with IP and client_id)
+  - Health check endpoints (`/health/live`, `/health/ready` with DB stats)
 
 ### Metrics Exposed
 
@@ -305,10 +306,10 @@ event-notification-service/
 ### Endpoints
 
 #### **POST /api/v1/events**
-Submit a new event for processing.
+Submit a new event for processing. The `client_id` from your API key's metadata is automatically captured and stored with the event.
 
 **Headers**:
-- `Authorization: Bearer <jwt>` (required)
+- `X-API-Key: <api-key>` (required, scope: `events:write`)
 - `Idempotency-Key: <uuid>` (required)
 - `Content-Type: application/json` (required)
 
@@ -339,7 +340,7 @@ Submit a new event for processing.
 **Example**:
 ```bash
 curl -X POST http://localhost:8080/api/v1/events \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "X-API-Key: your-api-key-here" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{
@@ -353,10 +354,10 @@ curl -X POST http://localhost:8080/api/v1/events \
 ```
 
 #### **GET /api/v1/events/:id**
-Retrieve a previously submitted event.
+Retrieve a previously submitted event, including the client_id that submitted it.
 
 **Headers**:
-- `Authorization: Bearer <jwt>` (required)
+- `X-API-Key: <api-key>` (required, scope: `events:read`)
 
 **Responses**:
 - `200 OK`
@@ -365,6 +366,7 @@ Retrieve a previously submitted event.
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "type": "UserRegistered",
     "payload": {"user_id": "12345", "email": "user@example.com", "name": "John Doe"},
+    "client_id": "acme-corp",
     "occurred_at": "2026-02-24T10:30:00Z",
     "created_at": "2026-02-24T10:30:01Z"
   }
@@ -381,6 +383,56 @@ Health check endpoint (no auth required).
 
 #### **GET /metrics**
 Prometheus metrics endpoint (no auth required).
+
+### Admin Endpoints
+
+#### **POST /admin/api-keys**
+Create a new API key with client metadata.
+
+**Headers**:
+- `X-API-Key: <admin-key>` (required, scope: `admin`)
+
+**Request Body**:
+```json
+{
+  "name": "Acme Corp - Production",
+  "scopes": ["events:write", "events:read"],
+  "metadata": {
+    "client_id": "acme-corp",
+    "organization": "Acme Corporation",
+    "contact_email": "api@acme.com"
+  }
+}
+```
+
+**Response (201 Created)**:
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Acme Corp - Production",
+  "scopes": ["events:write", "events:read"],
+  "metadata": {
+    "client_id": "acme-corp",
+    "organization": "Acme Corporation",
+    "contact_email": "api@acme.com"
+  },
+  "key": "abc123...xyz"
+}
+```
+
+⚠️ **Important**: The raw `key` is returned only once on creation and cannot be retrieved later.
+
+#### **GET /admin/api-keys**
+List all API keys (without raw key values).
+
+**Headers**:
+- `X-API-Key: <admin-key>` (required, scope: `admin`)
+
+#### **DELETE /admin/api-keys/:id**
+Revoke an API key (sets `is_active` to false).
+
+**Headers**:
+- `X-API-Key: <admin-key>` (required, scope: `admin`)
 
 ### Supported Event Types
 
@@ -404,7 +456,8 @@ All configuration is via **environment variables**. See [.env.example](.env.exam
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `PG_DSN` | PostgreSQL connection string | `postgres://user:pass@localhost:5432/events?sslmode=disable` |
-| `JWT_SECRET` | JWT signing secret (min 32 bytes) | `your-secret-key-at-least-32-bytes-long` |
+
+**Note**: API keys are managed via the `/admin/api-keys` endpoint (requires an initial admin key). See [API Key Management](#api-key-management) section.
 
 ### API Server
 
@@ -421,13 +474,13 @@ All configuration is via **environment variables**. See [.env.example](.env.exam
 | `SHUTDOWN_TIMEOUT` | `30` | Graceful shutdown timeout (seconds) |
 | `TRUSTED_PROXIES` | — | Comma-separated trusted proxy IPs (e.g., `10.0.0.0/8`) |
 
-### JWT Authentication
+### API Key Management
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JWT_SECRET` | — | HS256 signing secret (**required** in production) |
-| `JWT_ISSUER` | — | Expected `iss` claim (optional) |
-| `JWT_AUDIENCE` | — | Expected `aud` claim (optional) |
+API keys are created and managed via admin endpoints. Each key includes:
+- **Scopes**: `events:write`, `events:read`, `admin`
+- **Metadata**: Client tracking information (`client_id`, `organization`, `contact_email`)
+
+See [Admin Endpoints](#admin-endpoints) for details on creating API keys.
 
 ### TLS
 
@@ -598,12 +651,12 @@ make clean                # Remove build artifacts
 Migrations are in `internal/infrastructure/postgres/migrations/`:
 
 ```
-001_create_events_table.up.sql
-001_create_events_table.down.sql
-002_create_notifications_table.up.sql
-002_create_notifications_table.down.sql
-003_add_status_to_events.up.sql
-003_add_status_to_events.down.sql
+001_create_events.up.sql / .down.sql
+002_create_notifications.up.sql / .down.sql
+003_add_event_status.up.sql / .down.sql
+004_create_api_keys.up.sql / .down.sql
+005_add_api_keys_metadata.up.sql / .down.sql    # API key client tracking
+006_add_events_client_id.up.sql / .down.sql      # Event client tracking
 ```
 
 **Apply all pending migrations**:
@@ -684,15 +737,17 @@ All logs are JSON-formatted (Zap) with consistent fields:
 }
 ```
 
-**Audit logs** (JWT middleware):
+**Audit logs** (API Key middleware):
 ```json
 {
   "level": "info",
   "ts": "2026-02-24T10:30:00.123Z",
   "msg": "auth success",
   "event": "auth",
-  "subject": "user-123",
-  "ip": "203.0.113.42"
+  "api_key_name": "Acme Corp - Production",
+  "client_id": "acme-corp",
+  "remote_ip": "203.0.113.42",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
@@ -700,12 +755,13 @@ All logs are JSON-formatted (Zap) with consistent fields:
 
 ## 🔐 Security Considerations
 
-### Authentication
+### API Key Authentication
 
-- JWT tokens must use **HS256** algorithm (RS256, ES256, `none` are rejected)
-- `exp` claim is **required** (tokens without expiry are rejected)
-- Minimum secret length: **32 bytes** (enforced in config validation)
-- Optional issuer/audience validation via `JWT_ISSUER` and `JWT_AUDIENCE`
+- API keys are stored as **SHA-256 hashes** (never plaintext)
+- **Scope-based authorization**: `events:write`, `events:read`, `admin`
+- **Client tracking**: Each key has metadata with `client_id` for auditing
+- Keys can be **revoked** at any time via `DELETE /admin/api-keys/:id`
+- **Audit logging**: All authentication attempts logged with IP and client_id
 
 ### Rate Limiting
 
@@ -726,16 +782,16 @@ Automatically applied to all API responses:
 Before deploying to production:
 
 - [ ] Set `APP_ENV=production`
-- [ ] Use a strong `JWT_SECRET` (min 32 bytes, randomly generated)
+- [ ] Create an initial **admin API key** for managing other keys
 - [ ] Configure `TRUSTED_PROXIES` to match your load balancer
 - [ ] Set `CORS_ALLOW_ALL=false` and specify `CORS_ALLOWED_ORIGINS`
 - [ ] Enable TLS via `TLS_CERT_FILE` and `TLS_KEY_FILE` (or terminate at load balancer)
 - [ ] Set `HSTS_ENABLED=true` (when using HTTPS)
-- [ ] Configure `JWT_ISSUER` and `JWT_AUDIENCE` for additional validation
 - [ ] Review resource limits in Kubernetes manifests
 - [ ] Set up Prometheus scraping and alerting
 - [ ] Configure SMTP credentials for email delivery
-- [ ] Apply database migrations before deploying code
+- [ ] Apply database migrations (`005_add_api_keys_metadata`, `006_add_events_client_id`)
+- [ ] Create API keys for all clients with proper metadata
 - [ ] Test graceful shutdown behavior under load
 
 ---
