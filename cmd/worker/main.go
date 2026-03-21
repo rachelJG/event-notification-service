@@ -152,7 +152,9 @@ func main() {
 
 	cancel()
 	wg.Wait()
-	_ = metricsServer.Shutdown(context.Background())
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	_ = metricsServer.Shutdown(shutdownCtx)
 	pool.Close()
 	log.Info("worker stopped")
 }

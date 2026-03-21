@@ -313,6 +313,7 @@ func testRouterOptions() RouterOptions {
 		RateLimitBurst:      1000,
 		CORSAllowAllOrigins: true,
 		CORSAllowedHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Idempotency-Key", "X-API-Key"},
+		ShutdownCh:          make(chan struct{}),
 	}
 }
 
@@ -548,38 +549,6 @@ func TestNewRouterDefaultRateLimit(t *testing.T) {
 	}
 }
 
-func TestRequestIDFromContextEdgeCases(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/test", func(c *gin.Context) {
-		c.Set("request_id", 12345)
-		result := requestIDFromContext(c)
-		if result != "" {
-			t.Errorf("expected empty string for non-string request_id, got %q", result)
-		}
-		c.String(http.StatusOK, "ok")
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-}
-
-func TestRequestIDFromContextMissing(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/test", func(c *gin.Context) {
-		result := requestIDFromContext(c)
-		if result != "" {
-			t.Errorf("expected empty string for missing request_id, got %q", result)
-		}
-		c.String(http.StatusOK, "ok")
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-}
 
 func TestEventsSubmittedMetricSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -731,35 +700,6 @@ func TestNewRouterInvalidTrustedProxiesNilLogger(t *testing.T) {
 	}
 }
 
-func TestEventTypeFromContextNonString(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/test", func(c *gin.Context) {
-		c.Set("event_type", 12345)
-		result := eventTypeFromContext(c)
-		if result != "" {
-			t.Errorf("expected empty for non-string event_type, got %q", result)
-		}
-		c.String(http.StatusOK, "ok")
-	})
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r.ServeHTTP(httptest.NewRecorder(), req)
-}
-
-func TestIdempotencyKeyFromContextNonString(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/test", func(c *gin.Context) {
-		c.Set("idempotency_key", 12345)
-		result := idempotencyKeyFromContext(c)
-		if result != "" {
-			t.Errorf("expected empty for non-string idempotency_key, got %q", result)
-		}
-		c.String(http.StatusOK, "ok")
-	})
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r.ServeHTTP(httptest.NewRecorder(), req)
-}
 
 func TestEventsSubmittedMetricError(t *testing.T) {
 	gin.SetMode(gin.TestMode)

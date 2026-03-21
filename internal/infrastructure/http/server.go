@@ -61,7 +61,7 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 
 	// Unauthenticated endpoints — IP-based rate limiting as DDoS protection.
 	publicGroup := router.Group("/")
-	publicGroup.Use(middleware.RateLimit(rps, burst))
+	publicGroup.Use(middleware.RateLimit(rps, burst, opts.ShutdownCh))
 
 	// Liveness: only checks that the process is running — no external I/O.
 	// Used by Kubernetes livenessProbe; a failure here triggers a pod restart.
@@ -113,7 +113,7 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 		RequiredScopes: []string{"events:read"},
 		Logger:         logger,
 	})
-	apiKeyRL := middleware.APIKeyRateLimit(rps, burst)
+	apiKeyRL := middleware.APIKeyRateLimit(rps, burst, opts.ShutdownCh)
 	v1.POST("/events", eventsWrite, apiKeyRL, handler.SubmitEventHandler)
 	v1.GET("/events/:id", eventsRead, apiKeyRL, handler.GetEventHandler)
 

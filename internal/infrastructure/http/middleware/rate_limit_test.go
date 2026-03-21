@@ -38,7 +38,7 @@ func TestRateLimit_AllowsWithinBurst(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			r := gin.New()
-			r.GET("/test", RateLimit(tt.rps, tt.burst), func(c *gin.Context) {
+			r.GET("/test", RateLimit(tt.rps, tt.burst, testDone()), func(c *gin.Context) {
 				c.String(http.StatusOK, "ok")
 			})
 
@@ -57,7 +57,7 @@ func TestRateLimit_ExceedsBurst(t *testing.T) {
 	t.Parallel()
 
 	r := gin.New()
-	r.GET("/test", RateLimit(1, 1), func(c *gin.Context) {
+	r.GET("/test", RateLimit(1, 1, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -81,7 +81,7 @@ func TestRateLimit_PerIPIsolation(t *testing.T) {
 	t.Parallel()
 
 	r := gin.New()
-	r.GET("/test", RateLimit(1, 1), func(c *gin.Context) {
+	r.GET("/test", RateLimit(1, 1, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -112,7 +112,7 @@ func TestRateLimit_ResponseBody(t *testing.T) {
 	t.Parallel()
 
 	r := gin.New()
-	r.GET("/test", RequestID(), RateLimit(1, 1), func(c *gin.Context) {
+	r.GET("/test", RequestID(), RateLimit(1, 1, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -158,7 +158,7 @@ func TestRateLimit_RetryAfterValue(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			r := gin.New()
-			r.GET("/test", RateLimit(tt.rps, 1), func(c *gin.Context) {
+			r.GET("/test", RateLimit(tt.rps, 1, testDone()), func(c *gin.Context) {
 				c.String(http.StatusOK, "ok")
 			})
 
@@ -184,7 +184,7 @@ func TestRateLimit_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
 	r := gin.New()
-	r.GET("/test", RateLimit(1000, 50), func(c *gin.Context) {
+	r.GET("/test", RateLimit(1000, 50, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -213,7 +213,7 @@ func TestAPIKeyRateLimit_KeysByAPIKeyName(t *testing.T) {
 	t.Parallel()
 
 	r := gin.New()
-	r.GET("/test", setAPIKeyName("service-a"), APIKeyRateLimit(1, 1), func(c *gin.Context) {
+	r.GET("/test", setAPIKeyName("service-a"), APIKeyRateLimit(1, 1, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -240,7 +240,7 @@ func TestAPIKeyRateLimit_IsolationBetweenKeys(t *testing.T) {
 	r.GET("/test/:key", func(c *gin.Context) {
 		c.Set(ContextKeyAPIKeyName, c.Param("key"))
 		c.Next()
-	}, APIKeyRateLimit(1, 1), func(c *gin.Context) {
+	}, APIKeyRateLimit(1, 1, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -271,7 +271,7 @@ func TestAPIKeyRateLimit_FallsBackToIPWhenNoKey(t *testing.T) {
 
 	r := gin.New()
 	// No API key name set in context — should fall back to IP-based keying.
-	r.GET("/test", APIKeyRateLimit(1, 1), func(c *gin.Context) {
+	r.GET("/test", APIKeyRateLimit(1, 1, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -303,7 +303,7 @@ func TestAPIKeyRateLimit_SameIPDifferentKeys(t *testing.T) {
 	r.GET("/test/:key", func(c *gin.Context) {
 		c.Set(ContextKeyAPIKeyName, c.Param("key"))
 		c.Next()
-	}, APIKeyRateLimit(1, 1), func(c *gin.Context) {
+	}, APIKeyRateLimit(1, 1, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -327,7 +327,7 @@ func TestAPIKeyRateLimit_AllowsWithinBurst(t *testing.T) {
 	t.Parallel()
 
 	r := gin.New()
-	r.GET("/test", setAPIKeyName("burst-service"), APIKeyRateLimit(100, 5), func(c *gin.Context) {
+	r.GET("/test", setAPIKeyName("burst-service"), APIKeyRateLimit(100, 5, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -343,7 +343,7 @@ func TestAPIKeyRateLimit_ResponseBody(t *testing.T) {
 	t.Parallel()
 
 	r := gin.New()
-	r.GET("/test", RequestID(), setAPIKeyName("resp-svc"), APIKeyRateLimit(1, 1), func(c *gin.Context) {
+	r.GET("/test", RequestID(), setAPIKeyName("resp-svc"), APIKeyRateLimit(1, 1, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -373,7 +373,7 @@ func TestAPIKeyRateLimit_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
 	r := gin.New()
-	r.GET("/test", setAPIKeyName("concurrent-svc"), APIKeyRateLimit(1000, 50), func(c *gin.Context) {
+	r.GET("/test", setAPIKeyName("concurrent-svc"), APIKeyRateLimit(1000, 50, testDone()), func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
 
@@ -395,6 +395,12 @@ func TestAPIKeyRateLimit_ConcurrentAccess(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// testDone returns a done channel that is never closed, suitable for tests
+// where cleanup goroutine lifecycle is irrelevant.
+func testDone() <-chan struct{} {
+	return make(chan struct{})
+}
 
 // setAPIKeyName returns a middleware that sets the API key name in gin context,
 // simulating APIKeyAuth having already authenticated the request.

@@ -54,6 +54,7 @@ type app struct {
 	tlsCertFile     string
 	tlsKeyFile      string
 	shutdownTimeout time.Duration
+	shutdownCh      chan struct{}
 }
 
 func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, error) {
@@ -80,6 +81,7 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 	handler := httpadapter.Handler{EventService: eventService, Logger: log}
 	adminHandler := httpadapter.AdminHandler{APIKeyRepo: apiKeyRepo, Logger: log}
 
+	shutdownCh := make(chan struct{})
 	health := pgHealthChecker{pool: pool}
 	opts := httpadapter.RouterOptions{
 		MaxBodyBytes:        cfg.MaxBodyBytes,
@@ -93,6 +95,7 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		Version:             Version,
 		Commit:              Commit,
 		TrustedProxies:      cfg.TrustedProxies,
+		ShutdownCh:          shutdownCh,
 	}
 
 	router := httpadapter.NewRouter(handler, adminHandler, health, apiKeyRepo, log, opts)
@@ -105,10 +108,12 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		IdleTimeout:       cfg.IdleTimeout,
 	}
 
-	return &app{server: server, db: pool, logger: log, tlsCertFile: cfg.TLSCertFile, tlsKeyFile: cfg.TLSKeyFile, shutdownTimeout: cfg.ShutdownTimeout}, nil
+	return &app{server: server, db: pool, logger: log, tlsCertFile: cfg.TLSCertFile, tlsKeyFile: cfg.TLSKeyFile, shutdownTimeout: cfg.ShutdownTimeout, shutdownCh: shutdownCh}, nil
 }
 
 func (a *app) shutdown(ctx context.Context) error {
+	close(a.shutdownCh)
+
 	inner := max(a.shutdownTimeout-5*time.Second, 5*time.Second)
 	ctx, cancel := context.WithTimeout(ctx, inner)
 	defer cancel()

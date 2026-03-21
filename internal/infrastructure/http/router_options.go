@@ -64,4 +64,8 @@ type RouterOptions struct {
 	// Used by Gin to correctly parse client IP addresses from X-Forwarded-For headers
 	// when behind a reverse proxy.
 	TrustedProxies []string
+
+	// ShutdownCh is closed when the application is shutting down.
+	// Rate limiter cleanup goroutines stop when this channel is closed.
+	ShutdownCh <-chan struct{}
 }
