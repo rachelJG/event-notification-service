@@ -23,11 +23,8 @@ type EventRepository struct {
 // automatically. If an event with the same idempotency key and type already
 // exists, it updates the existing record.
 func (r EventRepository) Create(ctx context.Context, event entities.Event) (string, error) {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	id := event.ID
 	if id == "" {
@@ -54,11 +51,8 @@ func (r EventRepository) Create(ctx context.Context, event entities.Event) (stri
 }
 
 func (r EventRepository) GetByID(ctx context.Context, id string) (entities.Event, error) {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	var e entities.Event
 	var clientID *string
@@ -80,11 +74,8 @@ func (r EventRepository) GetByID(ctx context.Context, id string) (entities.Event
 }
 
 func (r EventRepository) ClaimPending(ctx context.Context, limit int) ([]entities.Event, error) {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	rows, err := r.Pool.Query(ctx, `
 		UPDATE events SET status = 'processing'
@@ -118,11 +109,8 @@ func (r EventRepository) ClaimPending(ctx context.Context, limit int) ([]entitie
 }
 
 func (r EventRepository) SetStatus(ctx context.Context, id string, status string) error {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	_, err := r.Pool.Exec(ctx, `UPDATE events SET status = $1 WHERE id = $2`, status, id)
 	if err != nil {

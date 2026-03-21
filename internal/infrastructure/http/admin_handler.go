@@ -11,6 +11,7 @@ import (
 	"github.com/rachelJG/event-notification-service/internal/domain/entities"
 	domainports "github.com/rachelJG/event-notification-service/internal/domain/ports"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/errmap"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/httputil"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/middleware"
 	"go.uber.org/zap"
 )
@@ -51,13 +52,13 @@ type apiKeyListItem struct {
 func (h AdminHandler) CreateAPIKeyHandler(c *gin.Context) {
 	var req createAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorJSON(c, http.StatusBadRequest, "invalid_argument", "invalid JSON body")
+		httputil.WriteCustomError(c, http.StatusBadRequest, "invalid JSON body", "invalid_argument")
 		return
 	}
 
 	// Validate metadata: client_id is required
 	if req.Metadata == nil || req.Metadata["client_id"] == "" {
-		errorJSON(c, http.StatusBadRequest, "invalid_argument", "metadata.client_id is required")
+		httputil.WriteCustomError(c, http.StatusBadRequest, "metadata.client_id is required", "invalid_argument")
 		return
 	}
 
@@ -68,7 +69,7 @@ func (h AdminHandler) CreateAPIKeyHandler(c *gin.Context) {
 	rawKey, err := genKey()
 	if err != nil {
 		h.Logger.Error("failed to generate api key", zap.Error(err))
-		errorJSON(c, http.StatusInternalServerError, "internal", "failed to generate key")
+		httputil.WriteCustomError(c, http.StatusInternalServerError, "failed to generate key", "internal")
 		return
 	}
 
@@ -87,7 +88,7 @@ func (h AdminHandler) CreateAPIKeyHandler(c *gin.Context) {
 
 	if err := h.APIKeyRepo.Create(c.Request.Context(), apiKey); err != nil {
 		h.Logger.Error("failed to store api key", zap.Error(err))
-		errorJSON(c, http.StatusInternalServerError, "internal", "failed to create key")
+		httputil.WriteCustomError(c, http.StatusInternalServerError, "failed to create key", "internal")
 		return
 	}
 
@@ -105,7 +106,7 @@ func (h AdminHandler) ListAPIKeysHandler(c *gin.Context) {
 	keys, err := h.APIKeyRepo.List(c.Request.Context())
 	if err != nil {
 		h.Logger.Error("failed to list api keys", zap.Error(err))
-		errorJSON(c, http.StatusInternalServerError, "internal", "failed to list keys")
+		httputil.WriteCustomError(c, http.StatusInternalServerError, "failed to list keys", "internal")
 		return
 	}
 
@@ -132,7 +133,7 @@ func (h AdminHandler) RevokeAPIKeyHandler(c *gin.Context) {
 			h.Logger.Error("failed to revoke api key", zap.String("key_id", id), zap.Error(err))
 		}
 		httpErr := errmap.FromError(err)
-		errorJSON(c, httpErr.Status, httpErr.Code, errmap.Message(err))
+		httputil.WriteCustomError(c, httpErr.Status, errmap.Message(err), httpErr.Code)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "api key revoked", "id": id})

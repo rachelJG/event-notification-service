@@ -53,38 +53,17 @@ func (uc ProcessEvents) Handle(ctx context.Context) (int, error) {
 	return processed, nil
 }
 
-// extractRecipient resolves the email address from the event payload based on event type.
+// extractRecipient resolves the email address from the event payload.
+// All supported event types include an "email" JSON field.
 func extractRecipient(evt entities.Event) (string, error) {
-	switch evt.Type {
-	case entities.EventTypeUserRegistered:
-		var p entities.UserRegisteredPayload
-		if err := json.Unmarshal(evt.Payload, &p); err != nil {
-			return "", err
-		}
-		return p.Email, nil
-	case entities.EventTypePasswordResetRequested:
-		var p entities.PasswordResetRequestedPayload
-		if err := json.Unmarshal(evt.Payload, &p); err != nil {
-			return "", err
-		}
-		return p.Email, nil
-	case entities.EventTypeOrderPaid:
-		var p struct {
-			Email string `json:"email"`
-		}
-		if err := json.Unmarshal(evt.Payload, &p); err != nil {
-			return "", err
-		}
-		return p.Email, nil
-	case entities.EventTypeOrderShipped:
-		var p struct {
-			Email string `json:"email"`
-		}
-		if err := json.Unmarshal(evt.Payload, &p); err != nil {
-			return "", err
-		}
-		return p.Email, nil
-	default:
-		return "", fmt.Errorf("unsupported event type: %s", evt.Type)
+	var p struct {
+		Email string `json:"email"`
 	}
+	if err := json.Unmarshal(evt.Payload, &p); err != nil {
+		return "", fmt.Errorf("unmarshal payload for recipient: %w", err)
+	}
+	if p.Email == "" {
+		return "", fmt.Errorf("no email in payload for event type: %s", evt.Type)
+	}
+	return p.Email, nil
 }

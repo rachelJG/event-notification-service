@@ -9,6 +9,7 @@ import (
 	appports "github.com/rachelJG/event-notification-service/internal/application/ports"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/dto"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/errmap"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/httputil"
 	"go.uber.org/zap"
 )
 
@@ -19,24 +20,15 @@ type Handler struct {
 
 const idempotencyHeader = "Idempotency-Key"
 
-// errorJSON writes a standardised error body including the request ID from context.
-func errorJSON(c *gin.Context, status int, code, message string) {
-	c.JSON(status, gin.H{
-		"error":      message,
-		"code":       code,
-		"request_id": c.GetString("request_id"),
-	})
-}
-
 func (h Handler) SubmitEventHandler(c *gin.Context) {
 	if !isIdempotencyKeyValid(c.GetHeader(idempotencyHeader)) {
-		errorJSON(c, http.StatusBadRequest, "invalid_argument", "missing or invalid Idempotency-Key")
+		httputil.WriteCustomError(c, http.StatusBadRequest, "missing or invalid Idempotency-Key", "invalid_argument")
 		return
 	}
 
 	var req dto.SubmitEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errorJSON(c, http.StatusBadRequest, "invalid_argument", "invalid JSON body")
+		httputil.WriteCustomError(c, http.StatusBadRequest, "invalid JSON body", "invalid_argument")
 		return
 	}
 	c.Set("event_type", req.EventType)
@@ -51,7 +43,7 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 		h.logError(c, err)
 		httpErr := errmap.FromError(err)
 		recordHTTPError(httpErr.Code)
-		errorJSON(c, httpErr.Status, httpErr.Code, errmap.Message(err))
+		httputil.WriteCustomError(c, httpErr.Status, errmap.Message(err), httpErr.Code)
 		return
 	}
 
@@ -85,44 +77,18 @@ func (h Handler) logError(c *gin.Context, err error) {
 		zap.String("path", c.FullPath()),
 		zap.Int("status", httpErr.Status),
 		zap.String("code", httpErr.Code),
-		zap.String("request_id", requestIDFromContext(c)),
-		zap.String("event_type", eventTypeFromContext(c)),
-		zap.String("idempotency_key", idempotencyKeyFromContext(c)),
+		zap.String("request_id", c.GetString("request_id")),
+		zap.String("event_type", c.GetString("event_type")),
+		zap.String("idempotency_key", c.GetString("idempotency_key")),
 		zap.Error(err),
 	)
 }
 
-func requestIDFromContext(c *gin.Context) string {
-	if v, ok := c.Get("request_id"); ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}
-
-func eventTypeFromContext(c *gin.Context) string {
-	if v, ok := c.Get("event_type"); ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}
-
-func idempotencyKeyFromContext(c *gin.Context) string {
-	if v, ok := c.Get("idempotency_key"); ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}
 
 func (h Handler) GetEventHandler(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {
-		errorJSON(c, http.StatusBadRequest, "invalid_argument", "invalid event ID format")
+		httputil.WriteCustomError(c, http.StatusBadRequest, "invalid event ID format", "invalid_argument")
 		return
 	}
 	event, err := h.EventService.GetEvent(c.Request.Context(), id)
@@ -130,7 +96,7 @@ func (h Handler) GetEventHandler(c *gin.Context) {
 		h.logError(c, err)
 		httpErr := errmap.FromError(err)
 		recordHTTPError(httpErr.Code)
-		errorJSON(c, httpErr.Status, httpErr.Code, errmap.Message(err))
+		httputil.WriteCustomError(c, httpErr.Status, errmap.Message(err), httpErr.Code)
 		return
 	}
 	c.JSON(http.StatusOK, dto.GetEventResponse{

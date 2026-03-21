@@ -19,11 +19,8 @@ type APIKeyRepository struct {
 }
 
 func (r APIKeyRepository) Create(ctx context.Context, key entities.APIKey) error {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	metadataJSON, err := json.Marshal(key.Metadata)
 	if err != nil {
@@ -41,11 +38,8 @@ func (r APIKeyRepository) Create(ctx context.Context, key entities.APIKey) error
 }
 
 func (r APIKeyRepository) GetByHash(ctx context.Context, keyHash string) (entities.APIKey, error) {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	var k entities.APIKey
 	var metadataJSON []byte
@@ -71,11 +65,8 @@ func (r APIKeyRepository) GetByHash(ctx context.Context, keyHash string) (entiti
 }
 
 func (r APIKeyRepository) List(ctx context.Context) ([]entities.APIKey, error) {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	rows, err := r.Pool.Query(ctx, `
 		SELECT id, name, scopes, metadata, is_active, created_at, last_used_at
@@ -105,11 +96,8 @@ func (r APIKeyRepository) List(ctx context.Context) ([]entities.APIKey, error) {
 }
 
 func (r APIKeyRepository) Revoke(ctx context.Context, id string) error {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	tag, err := r.Pool.Exec(ctx, `UPDATE api_keys SET is_active = FALSE WHERE id = $1`, id)
 	if err != nil {
@@ -122,11 +110,8 @@ func (r APIKeyRepository) Revoke(ctx context.Context, id string) error {
 }
 
 func (r APIKeyRepository) UpdateLastUsed(ctx context.Context, id string) error {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	_, err := r.Pool.Exec(ctx, `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`, id)
 	if err != nil {

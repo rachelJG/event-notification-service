@@ -18,11 +18,8 @@ type NotificationRepository struct {
 }
 
 func (r NotificationRepository) Create(ctx context.Context, n entities.Notification) (string, error) {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	id := n.ID
 	if id == "" {
@@ -42,11 +39,8 @@ func (r NotificationRepository) Create(ctx context.Context, n entities.Notificat
 }
 
 func (r NotificationRepository) FindPending(ctx context.Context, limit int) ([]entities.Notification, error) {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	rows, err := r.Pool.Query(ctx, `
 		SELECT id, event_id, channel, recipient, subject, body, status, attempts, max_attempts,
@@ -85,11 +79,8 @@ func (r NotificationRepository) FindPending(ctx context.Context, limit int) ([]e
 }
 
 func (r NotificationRepository) UpdateStatus(ctx context.Context, id string, update ports.NotificationUpdate) error {
-	if r.QueryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.QueryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
+	defer cancel()
 
 	var nextRetryAt *time.Time
 	if !update.NextRetryAt.IsZero() {
