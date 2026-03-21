@@ -472,23 +472,3 @@ func TestHashAPIKey(t *testing.T) {
 	})
 }
 
-func TestWritePermissionError(t *testing.T) {
-	t.Parallel()
-
-	r := gin.New()
-	r.GET("/test", func(c *gin.Context) {
-		c.Set("request_id", "req-123")
-		writePermissionError(c, "admin")
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusForbidden, w.Code)
-
-	body := parseBody(t, w)
-	assert.Equal(t, "insufficient scope: admin", body["error"])
-	assert.Equal(t, "permission_denied", body["code"])
-	assert.Equal(t, "req-123", body["request_id"])
-}

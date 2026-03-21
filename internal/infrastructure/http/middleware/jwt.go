@@ -1,12 +1,12 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/httputil"
 	"go.uber.org/zap"
 )
 
@@ -27,13 +27,13 @@ type JWTOptions struct {
 func JWTAuth(opts JWTOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if opts.Secret == "" {
-			writeAuthError(c, apperror.Internal("jwt secret not configured", nil))
+			httputil.WriteError(c, apperror.Internal("jwt secret not configured", nil))
 			return
 		}
 
 		auth := c.GetHeader("Authorization")
 		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
-			writeAuthError(c, apperror.Unauthenticated("missing or invalid authorization header", nil))
+			httputil.WriteError(c, apperror.Unauthenticated("missing or invalid authorization header", nil))
 			return
 		}
 
@@ -63,7 +63,7 @@ func JWTAuth(opts JWTOptions) gin.HandlerFunc {
 					zap.String("request_id", c.GetString("request_id")),
 				)
 			}
-			writeAuthError(c, apperror.Unauthenticated("invalid token", err))
+			httputil.WriteError(c, apperror.Unauthenticated("invalid token", err))
 			return
 		}
 
@@ -78,27 +78,4 @@ func JWTAuth(opts JWTOptions) gin.HandlerFunc {
 		c.Set(ContextKeySubject, claims.Subject)
 		c.Next()
 	}
-}
-
-func writeAuthError(c *gin.Context, err error) {
-	status := http.StatusInternalServerError
-	code := string(apperror.CodeInternal)
-	message := "internal error"
-	if appErr, ok := err.(*apperror.AppError); ok {
-		switch appErr.Code {
-		case apperror.CodeUnauthenticated:
-			status = http.StatusUnauthorized
-			code = string(appErr.Code)
-			message = appErr.Message
-		case apperror.CodePermissionDenied:
-			status = http.StatusForbidden
-			code = string(appErr.Code)
-			message = appErr.Message
-		case apperror.CodeInternal:
-			status = http.StatusInternalServerError
-			code = string(appErr.Code)
-			message = appErr.Message
-		}
-	}
-	c.AbortWithStatusJSON(status, gin.H{"error": message, "code": code, "request_id": c.GetString("request_id")})
 }

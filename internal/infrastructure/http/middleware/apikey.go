@@ -4,12 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	domainports "github.com/rachelJG/event-notification-service/internal/domain/ports"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/httputil"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 	"go.uber.org/zap"
 )
@@ -34,13 +34,13 @@ type APIKeyOptions struct {
 func APIKeyAuth(opts APIKeyOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if opts.Repo == nil {
-			writeAuthError(c, apperror.Internal("api key repository not configured", nil))
+			httputil.WriteError(c, apperror.Internal("api key repository not configured", nil))
 			return
 		}
 
 		rawKey := strings.TrimSpace(c.GetHeader("X-API-Key"))
 		if rawKey == "" {
-			writeAuthError(c, apperror.Unauthenticated("missing or invalid X-API-Key header", nil))
+			httputil.WriteError(c, apperror.Unauthenticated("missing or invalid X-API-Key header", nil))
 			return
 		}
 
@@ -49,20 +49,20 @@ func APIKeyAuth(opts APIKeyOptions) gin.HandlerFunc {
 		apiKey, err := opts.Repo.GetByHash(c.Request.Context(), keyHash)
 		if err != nil {
 			logAuthFailure(opts.Logger, "key not found", c)
-			writeAuthError(c, apperror.Unauthenticated("invalid api key", nil))
+			httputil.WriteError(c, apperror.Unauthenticated("invalid api key", nil))
 			return
 		}
 
 		if !apiKey.IsActive {
 			logAuthFailure(opts.Logger, "key revoked", c)
-			writeAuthError(c, apperror.Unauthenticated("api key has been revoked", nil))
+			httputil.WriteError(c, apperror.Unauthenticated("api key has been revoked", nil))
 			return
 		}
 
 		for _, scope := range opts.RequiredScopes {
 			if !apiKey.HasScope(scope) {
 				logAuthFailure(opts.Logger, "missing scope: "+scope, c)
-				writePermissionError(c, scope)
+				httputil.WritePermissionError(c, scope)
 				return
 			}
 		}
@@ -110,10 +110,3 @@ func logAuthFailure(logger *zap.Logger, reason string, c *gin.Context) {
 	)
 }
 
-func writePermissionError(c *gin.Context, scope string) {
-	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-		"error":      "insufficient scope: " + scope,
-		"code":       string(apperror.CodePermissionDenied),
-		"request_id": c.GetString("request_id"),
-	})
-}
