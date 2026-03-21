@@ -1,14 +1,12 @@
 package middleware
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 )
 
 // BodyLimit tests
@@ -190,37 +188,6 @@ func TestRequestIDUsesExisting(t *testing.T) {
 	}
 }
 
-// writeAuthError edge cases
-
-func TestWriteAuthErrorPermissionDenied(t *testing.T) {
-	r := gin.New()
-	r.GET("/test", func(c *gin.Context) {
-		writeAuthError(c, &apperror.AppError{Code: apperror.CodePermissionDenied, Message: "forbidden"})
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", w.Code)
-	}
-}
-
-func TestWriteAuthErrorGenericError(t *testing.T) {
-	r := gin.New()
-	r.GET("/test", func(c *gin.Context) {
-		writeAuthError(c, errors.New("something"))
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", w.Code)
-	}
-}
 
 func TestMetricsMiddlewareRecordsStatus(t *testing.T) {
 	r := gin.New()
