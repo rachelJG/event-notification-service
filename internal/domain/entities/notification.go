@@ -20,7 +20,8 @@ const (
 type Channel string
 
 const (
-	ChannelEmail Channel = "email"
+	ChannelEmail    Channel = "email"
+	ChannelWhatsApp Channel = "whatsapp"
 )
 
 // Notification represents a message to be delivered through a channel.
@@ -45,7 +46,7 @@ func NewNotification(eventID string, channel Channel, recipient, subject, body s
 	if strings.TrimSpace(eventID) == "" {
 		return Notification{}, errors.New("event_id is required")
 	}
-	if channel != ChannelEmail {
+	if channel != ChannelEmail && channel != ChannelWhatsApp {
 		return Notification{}, errors.New("unsupported channel")
 	}
 	if strings.TrimSpace(recipient) == "" {

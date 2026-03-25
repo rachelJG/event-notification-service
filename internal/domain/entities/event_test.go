@@ -2,50 +2,139 @@ package entities
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestNewEventSuccess(t *testing.T) {
-	event, err := NewEvent(EventTypeUserRegistered, "idem-key", []byte(`{}`))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+func TestNewEvent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		eventType      string
+		idempotencyKey string
+		payload        []byte
+		wantErr        string
+	}{
+		{
+			name:           "valid UserRegistered event",
+			eventType:      EventTypeUserRegistered,
+			idempotencyKey: "idem-key-1",
+			payload:        []byte(`{"user_id":"u1","email":"a@b.com","name":"Alice"}`),
+		},
+		{
+			name:           "valid InvoiceSummary event",
+			eventType:      EventTypeInvoiceSummary,
+			idempotencyKey: "idem-key-2",
+			payload:        []byte(`{}`),
+		},
+		{
+			name:           "nil payload is accepted",
+			eventType:      EventTypeOrderPaid,
+			idempotencyKey: "idem-key-3",
+			payload:        nil,
+		},
+		{
+			name:           "empty payload is accepted",
+			eventType:      EventTypeOrderShipped,
+			idempotencyKey: "idem-key-4",
+			payload:        []byte{},
+		},
+		{
+			name:           "empty event type",
+			eventType:      "",
+			idempotencyKey: "idem-key",
+			payload:        []byte(`{}`),
+			wantErr:        "event_type is required",
+		},
+		{
+			name:           "whitespace-only event type",
+			eventType:      "   ",
+			idempotencyKey: "idem-key",
+			payload:        []byte(`{}`),
+			wantErr:        "event_type is required",
+		},
+		{
+			name:           "unsupported event type",
+			eventType:      "UnknownType",
+			idempotencyKey: "idem-key",
+			payload:        []byte(`{}`),
+			wantErr:        "unsupported event_type",
+		},
+		{
+			name:           "case-sensitive event type",
+			eventType:      "userregistered",
+			idempotencyKey: "idem-key",
+			payload:        []byte(`{}`),
+			wantErr:        "unsupported event_type",
+		},
+		{
+			name:           "empty idempotency key",
+			eventType:      EventTypeUserRegistered,
+			idempotencyKey: "",
+			payload:        []byte(`{}`),
+			wantErr:        "idempotency_key is required",
+		},
+		{
+			name:           "whitespace-only idempotency key",
+			eventType:      EventTypeUserRegistered,
+			idempotencyKey: "   \t  ",
+			payload:        []byte(`{}`),
+			wantErr:        "idempotency_key is required",
+		},
 	}
-	if event.Type != EventTypeUserRegistered {
-		t.Fatalf("expected type %s, got %s", EventTypeUserRegistered, event.Type)
-	}
-	if event.IdempotencyKey != "idem-key" {
-		t.Fatalf("expected idempotency key to be set")
-	}
-	if event.OccurredAt.IsZero() {
-		t.Fatalf("expected OccurredAt to be set")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			event, err := NewEvent(tt.eventType, tt.idempotencyKey, tt.payload)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Equal(t, tt.wantErr, err.Error(), "error message mismatch")
+				assert.Equal(t, Event{}, event, "should return zero-value Event on error")
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.eventType, event.Type, "event type")
+			assert.Equal(t, tt.idempotencyKey, event.IdempotencyKey, "idempotency key")
+			assert.Equal(t, tt.payload, event.Payload, "payload")
+			assert.False(t, event.OccurredAt.IsZero(), "OccurredAt should be set")
+			assert.True(t, event.OccurredAt.Location().String() == "UTC", "OccurredAt should be UTC")
+		})
 	}
 }
 
-func TestNewEventEmptyType(t *testing.T) {
-	_, err := NewEvent("", "idem-key", []byte(`{}`))
-	if err == nil {
-		t.Fatal("expected error for empty event_type")
-	}
-}
+func TestNewEvent_AllValidTypesAccepted(t *testing.T) {
+	t.Parallel()
 
-func TestNewEventUnsupportedType(t *testing.T) {
-	_, err := NewEvent("UnknownType", "idem-key", []byte(`{}`))
-	if err == nil {
-		t.Fatal("expected error for unsupported event_type")
-	}
-}
-
-func TestNewEventEmptyIdempotencyKey(t *testing.T) {
-	_, err := NewEvent(EventTypeUserRegistered, "", []byte(`{}`))
-	if err == nil {
-		t.Fatal("expected error for empty idempotency_key")
-	}
-}
-
-func TestNewEventAllTypesAccepted(t *testing.T) {
 	for _, et := range ValidEventTypes() {
-		_, err := NewEvent(et, "idem-key", []byte(`{}`))
-		if err != nil {
-			t.Fatalf("expected %s to be accepted, got error: %v", et, err)
-		}
+		t.Run(et, func(t *testing.T) {
+			t.Parallel()
+
+			event, err := NewEvent(et, "idem-key", []byte(`{}`))
+			require.NoError(t, err, "event type %s should be accepted", et)
+			assert.Equal(t, et, event.Type)
+		})
 	}
+}
+
+func TestValidEventTypes(t *testing.T) {
+	t.Parallel()
+
+	types := ValidEventTypes()
+	assert.Len(t, types, 6, "expected 6 event types")
+
+	expected := []EventType{
+		EventTypeUserRegistered,
+		EventTypePasswordResetRequested,
+		EventTypeOrderPaid,
+		EventTypeOrderShipped,
+		EventTypeInvoiceIssued,
+		EventTypeInvoiceSummary,
+	}
+	assert.Equal(t, expected, types)
 }
