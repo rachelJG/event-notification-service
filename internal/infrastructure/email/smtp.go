@@ -77,10 +77,10 @@ func (s *SMTPSender) dialAndSend(to string, msg []byte) error {
 
 	client, err := smtp.NewClient(conn, s.host)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("smtp new client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Attempt STARTTLS; skip gracefully if not supported (e.g. dev SMTP servers).
 	if ok, _ := client.Extension("STARTTLS"); ok {
