@@ -1,12 +1,60 @@
 package email
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
 	"time"
 )
+
+// fakeSMTPServer is a minimal SMTP server that accepts one message.
+// It speaks enough of the protocol to exercise dialAndSend fully.
+func fakeSMTPServer(t *testing.T, ln net.Listener) {
+	t.Helper()
+
+	conn, err := ln.Accept()
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	scanner := bufio.NewScanner(conn)
+	write := func(s string) { fmt.Fprintf(conn, "%s\r\n", s) }
+
+	write("220 localhost ESMTP fakeSMTP")
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		verb := strings.ToUpper(strings.SplitN(line, " ", 2)[0])
+
+		switch verb {
+		case "EHLO", "HELO":
+			write("250-localhost")
+			write("250 OK")
+		case "MAIL":
+			write("250 OK")
+		case "RCPT":
+			write("250 OK")
+		case "DATA":
+			write("354 Start mail input")
+			// Read until lone "."
+			for scanner.Scan() {
+				if scanner.Text() == "." {
+					break
+				}
+			}
+			write("250 OK")
+		case "QUIT":
+			write("221 Bye")
+			return
+		default:
+			write("500 Unknown command")
+		}
+	}
+}
 
 func TestNewSMTPSender(t *testing.T) {
 	s := NewSMTPSender("smtp.example.com", "587", "user@example.com", "secret", "noreply@example.com")
@@ -151,6 +199,26 @@ func TestSendContextCanceledDuringSend(t *testing.T) {
 	}
 	if !strings.Contains(sendErr.Error(), "canceled") && !strings.Contains(sendErr.Error(), "deadline") {
 		t.Errorf("expected context error, got: %v", sendErr)
+	}
+}
+
+func TestDialAndSend_Success(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	go fakeSMTPServer(t, ln)
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	s := NewSMTPSender("127.0.0.1", port, "", "", "from@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := s.Send(ctx, "to@test.com", "Test Subject", "Hello"); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
 	}
 }
 
