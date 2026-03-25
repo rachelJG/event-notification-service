@@ -76,6 +76,11 @@ type Config struct {
 	// SMTPFrom is the sender email address (required when SMTPHost is set)
 	SMTPFrom string
 
+	// WhatsAppAPIURL is the base URL of the WhatsApp messaging API
+	WhatsAppAPIURL string
+	// WhatsAppAPIToken is the bearer token for authenticating with the WhatsApp API
+	WhatsAppAPIToken string
+
 	// WorkerProcessInterval is the interval between event processing cycles (default: 5s)
 	WorkerProcessInterval time.Duration
 	// WorkerDeliverInterval is the interval between notification delivery cycles (default: 3s)
@@ -150,6 +155,9 @@ func Load() Config {
 		SMTPUser:     getenvDefault("SMTP_USER", ""),
 		SMTPPassword: os.Getenv("SMTP_PASSWORD"),
 		SMTPFrom:     getenvDefault("SMTP_FROM", ""),
+
+		WhatsAppAPIURL:   os.Getenv("WHATSAPP_API_URL"),
+		WhatsAppAPIToken: os.Getenv("WHATSAPP_API_TOKEN"),
 
 		WorkerProcessInterval: getenvDurationSecondsDefault("WORKER_PROCESS_INTERVAL", 5),
 		WorkerDeliverInterval: getenvDurationSecondsDefault("WORKER_DELIVER_INTERVAL", 3),

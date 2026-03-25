@@ -1,0 +1,3 @@
+-- PostgreSQL does not support removing values from an enum type.
+-- To fully roll back, existing whatsapp notifications would need to be migrated
+-- and the enum recreated. This is intentionally a no-op.
