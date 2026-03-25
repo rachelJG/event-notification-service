@@ -38,6 +38,7 @@ internal/application/usecases/     → Business logic (EventService implementati
 internal/application/validation/   → Payload shape validation per event type (application concern, not domain)
 internal/infrastructure/http/      → Gin router, handler, DTOs, RouterOptions, HealthChecker interface, middleware stack, error-to-HTTP mapping, business metrics
 internal/infrastructure/postgres/  → EventRepository implementation using pgxpool (Create, GetByID, mapDBError)
+internal/infrastructure/whatsapp/  → WhatsApp sender implementation (HTTP-based API client)
 internal/infrastructure/logger/    → Zap logger factory
 ```
 
@@ -56,7 +57,7 @@ Validation is split across two layers with a clear boundary:
 | Layer | Where | What it validates |
 |---|---|---|
 | Domain | `entities.NewEvent` | Invariants: type not empty, type is in `ValidEventTypes()`, idempotency key not empty |
-| Application | `validation.ValidateEvent` | Payload shape: required fields per event type, format rules (e.g. email contains `@`), amount > 0 |
+| Application | `validation.ValidateEvent` | Payload shape: required fields per event type, format rules (e.g. email contains `@`), amount > 0, recipients array (max 500) |
 
 The domain does **not** validate payload content — that would require importing `encoding/json`, breaking the zero-dependency rule. Payload bytes are opaque to the domain.
 
@@ -71,6 +72,8 @@ The use case calls `ValidateEvent` **before** `NewEvent`: validate input first, 
 - **DB error mapping**: `mapDBError` in `postgres/event_repository.go` translates pgx/pgconn error codes to `AppError` (23505 unique_violation → conflict, 23502 not_null_violation → invalid_argument, pgx.ErrNoRows → not_found). Context errors pass through untouched so `errmap` can handle them at the HTTP layer.
 - **Business metrics**: `events_submitted_total{event_type, result}` Prometheus counter in `infrastructure/http/metrics.go` tracks submitted events by type and outcome (success/error), separate from HTTP-level metrics in middleware.
 - **Version injection**: `Version` and `Commit` package-level vars in `cmd/api/main.go` are populated at build time via `-ldflags`. `make build` derives them from `git describe` and `git rev-parse`. Exposed on `GET /health/ready`.
+- **Fan-out notifications**: `InvoiceIssued` events fan out into N email notifications (one per recipient). `InvoiceSummary` events produce a single WhatsApp group notification. The worker's `ProcessEvents` use case handles dispatch by event type.
+- **Multi-channel delivery**: `DeliverNotifications` dispatches by notification channel (`email` → SMTP, `whatsapp` → HTTP API). WhatsApp sender is optional — if not configured, WhatsApp notifications fail gracefully with a descriptive error.
 
 ## HTTP API
 
@@ -187,8 +190,11 @@ Set `TLS_CERT_FILE` and `TLS_KEY_FILE` (both required together) to enable `Liste
 | Package | File | What it covers |
 |---|---|---|
 | `domain/entities` | `event_test.go` | `NewEvent` invariants: empty type, unsupported type, empty idempotency key, all valid types accepted |
-| `application/validation` | `validate_event_test.go` | All 4 event types (valid + invalid fields + invalid JSON + invalid email + amount rules), empty type, unsupported type |
+| `application/validation` | `validate_event_test.go` | All 6 event types (valid + invalid fields + invalid JSON + invalid email + amount rules + recipients validation), empty type, unsupported type |
 | `application/usecases` | `event_service_test.go` | EventService.SubmitEvent: success, payload error, repo error, missing idempotency key, empty type, unsupported type; EventService.GetEvent: success, empty id → invalid_argument, repo not_found error |
+| `application/usecases` | `process_events_test.go` | ProcessEvents: single-recipient events, InvoiceIssued fan-out (N notifications), InvoiceSummary → WhatsApp notification |
+| `application/usecases` | `deliver_notifications_test.go` | DeliverNotifications: email success, send error + retry, max retries → failed, WhatsApp success, WhatsApp error, WhatsApp not configured |
+| `infrastructure/whatsapp` | `sender_test.go` | SendToGroup: success (verifies request format + auth header), API error response, context cancellation |
 | `infrastructure/http` | `handler_test.go` | Missing/invalid idempotency key, success + Location header, service error, unauthorized, wrong content-type, rate limit, GET success, GET 404, GET unauthorized, metric increments |
 | `infrastructure/http/errmap` | `errmap_test.go` | All AppError codes → HTTP status, context.DeadlineExceeded → 504, context.Canceled → 499 |
 | `infrastructure/http/middleware` | `jwt_test.go` | HS256 success, subject in context, missing header, expired token, missing exp, RS256 rejected, issuer validation, audience validation, empty secret |
@@ -227,6 +233,8 @@ Key env vars:
 | `DB_POOL_MIN_CONNS` | 2 | pgxpool min idle connections |
 | `DB_POOL_MAX_CONN_LIFETIME` | 3600s | Max connection reuse time |
 | `DB_POOL_MAX_CONN_IDLE_TIME` | 1800s | Max connection idle time |
+| `WHATSAPP_API_URL` | — | Base URL of the WhatsApp messaging API |
+| `WHATSAPP_API_TOKEN` | — | Bearer token for WhatsApp API authentication |
 
 ## Database
 

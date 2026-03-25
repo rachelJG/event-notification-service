@@ -1,6 +1,6 @@
 # Event Notification Service
 
-A production-ready, high-performance event notification service built in Go with hexagonal architecture. Receives domain events via REST API, persists them in PostgreSQL, and processes them asynchronously through a worker to deliver email notifications.
+A production-ready, high-performance event notification service built in Go with hexagonal architecture. Receives domain events via REST API, persists them in PostgreSQL, and processes them asynchronously through a worker to deliver notifications via email and WhatsApp.
 
 [![CI](https://github.com/rachelJG/event-notification-service/workflows/CI/badge.svg)](https://github.com/rachelJG/event-notification-service/actions)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
@@ -14,7 +14,8 @@ This service implements a **complete event-driven notification pipeline** with:
 
 - **REST API** for event ingestion with idempotency guarantees
 - **Asynchronous Worker** for event processing and notification delivery
-- **Email notifications** with templating support per event type
+- **Multi-channel delivery**: Email (SMTP) and WhatsApp (HTTP API)
+- **Fan-out notifications**: A single event can generate multiple notifications (e.g., one invoice event per condominium fans out to N resident emails)
 - **Production hardening**: rate limiting, API Key authentication, CORS, security headers, graceful shutdown
 - **Client tracking**: Automatic capture of client metadata for auditing and analytics
 - **Full observability**: Prometheus metrics, structured logging, health checks
@@ -42,7 +43,7 @@ This service implements a **complete event-driven notification pipeline** with:
 │  (External)  │                 │  (External)  │
 └──────┬───────┘                 └──────▲───────┘
        │                                │
-       │ HTTP POST                      │ Email/Webhook
+       │ HTTP POST                      │ Email / WhatsApp
        ▼                                │
 ┌─────────────────────────────────────────────────┐
 │              Event Notification Service         │
@@ -92,10 +93,13 @@ The project follows **Hexagonal Architecture** (Ports & Adapters) organized in t
    │   │  repo.go         │ │   │  processor      │ │   ├─ email_sender  │
    │   └─ metrics.go      │ │   └─ notification_  │ │   └─ email_        │
    │                      │ │      deliverer       │ │      renderer.go   │
-   │  email/              │ │                      │ │                    │
-   │   ├─ smtp_adapter.go │ │  validation/         │ │                    │
-   │   └─ templates.go    │ │   └─ validate_       │ │                    │
-   │                      │ │      event.go        │ │                    │
+   │  email/              │ │                      │ │   ├─ whatsapp_     │
+   │   ├─ smtp_adapter.go │ │  validation/         │ │   │  sender.go     │
+   │   └─ templates.go    │ │   └─ validate_       │ │   └─ email_        │
+   │                      │ │      event.go        │ │      renderer.go   │
+   │  whatsapp/           │ │                      │ │                    │
+   │   └─ sender.go       │ │                      │ │                    │
+   │                      │ │                      │ │                    │
    │  logger/             │ │                      │ │                    │
    │   └─ zap.go          │ │                      │ │                    │
    └──────────┬───────────┘ └──────────┬───────────┘ └────────────────────┘
@@ -129,6 +133,7 @@ event-notification-service/
 │   │   ├── http/                      # Gin router, handlers, middleware, metrics
 │   │   ├── postgres/                  # Repository implementations, migrations
 │   │   ├── email/                     # SMTP adapter, email templates
+│   │   ├── whatsapp/                  # WhatsApp API sender
 │   │   └── logger/                    # Zap logger factory
 │   ├── pkg/
 │   │   └── apperror/                  # Typed error taxonomy
@@ -154,13 +159,16 @@ event-notification-service/
 
 - ✅ **Event Ingestion**: REST API with API Key authentication and idempotency keys
 - ✅ **Supported Event Types**:
-  - `UserRegistered` — User registration notifications
-  - `PasswordResetRequested` — Password reset emails
-  - `OrderPaid` — Payment confirmation
-  - `OrderShipped` — Shipping notifications
+  - `UserRegistered` — User registration notifications (email)
+  - `PasswordResetRequested` — Password reset emails (email)
+  - `OrderPaid` — Payment confirmation (email)
+  - `OrderShipped` — Shipping notifications (email)
+  - `InvoiceIssued` — Condominium invoice fan-out: 1 event → N individual emails per resident
+  - `InvoiceSummary` — WhatsApp group summary notification for condominium administrators
 - ✅ **Idempotency**: Guaranteed via `UNIQUE(idempotency_key, type)` DB constraint
 - ✅ **Async Processing**: Worker polls pending events every 5 seconds
-- ✅ **Email Delivery**: SMTP adapter with per-event-type templates
+- ✅ **Multi-channel Delivery**: SMTP for email, HTTP API for WhatsApp
+- ✅ **Fan-out**: `InvoiceIssued` events produce one notification per recipient (up to 500)
 - ✅ **Retry Logic**: Configurable max retries with exponential backoff
 
 ### Production Hardening
@@ -436,12 +444,61 @@ Revoke an API key (sets `is_active` to false).
 
 ### Supported Event Types
 
-| Event Type | Payload Schema | Email Template |
-|------------|----------------|----------------|
-| `UserRegistered` | `{user_id, email, name}` | Welcome email |
-| `PasswordResetRequested` | `{user_id, email}` | Password reset instructions |
-| `OrderPaid` | `{order_id, user_id, amount, currency}` | Payment confirmation |
-| `OrderShipped` | `{order_id, user_id, carrier, tracking_number}` | Shipping notification |
+| Event Type | Payload Schema | Channel | Behavior |
+|------------|----------------|---------|----------|
+| `UserRegistered` | `{user_id, email, name}` | Email | 1 email per event |
+| `PasswordResetRequested` | `{user_id, email}` | Email | 1 email per event |
+| `OrderPaid` | `{order_id, user_id, amount, currency}` | Email | 1 email per event |
+| `OrderShipped` | `{order_id, user_id, carrier, tracking_number}` | Email | 1 email per event |
+| `InvoiceIssued` | `{condominium_id, condominium_name, invoice_month, due_date, currency, recipients[]}` | Email | Fan-out: 1 event → N emails (max 500 recipients) |
+| `InvoiceSummary` | `{condominium_id, condominium_name, invoice_month, total_units, total_amount, currency, whatsapp_group_id, message}` | WhatsApp | 1 group message per event |
+
+#### Example: Submit an invoice event (fan-out)
+
+```bash
+curl -X POST http://localhost:8080/api/v1/events \
+  -H "X-API-Key: your-api-key-here" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "InvoiceIssued",
+    "payload": {
+      "condominium_id": "condo-001",
+      "condominium_name": "Residencias Sol",
+      "invoice_month": "2026-03",
+      "due_date": "2026-04-10",
+      "currency": "USD",
+      "recipients": [
+        {"email": "maria@email.com", "name": "Maria Garcia", "unit_code": "1-A", "amount": 150.00},
+        {"email": "jose@email.com", "name": "Jose Lopez", "unit_code": "2-B", "amount": 200.00}
+      ]
+    }
+  }'
+```
+
+This creates one email notification per recipient. The worker delivers them asynchronously.
+
+#### Example: Submit a WhatsApp group summary
+
+```bash
+curl -X POST http://localhost:8080/api/v1/events \
+  -H "X-API-Key: your-api-key-here" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "InvoiceSummary",
+    "payload": {
+      "condominium_id": "condo-001",
+      "condominium_name": "Residencias Sol",
+      "invoice_month": "2026-03",
+      "total_units": 180,
+      "total_amount": 27000.00,
+      "currency": "USD",
+      "whatsapp_group_id": "group-xyz",
+      "message": "Se cargo el recibo de marzo 2026. Total: $27,000 (180 unidades)"
+    }
+  }'
+```
 
 Full API documentation: [docs/api.apib](docs/api.apib)
 
@@ -525,6 +582,15 @@ See [Admin Endpoints](#admin-endpoints) for details on creating API keys.
 | `SMTP_USER` | — | SMTP username |
 | `SMTP_PASSWORD` | — | SMTP password |
 | `SMTP_FROM` | — | From address for outgoing emails |
+
+### WhatsApp (Worker Only)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WHATSAPP_API_URL` | — | Base URL of the WhatsApp messaging API |
+| `WHATSAPP_API_TOKEN` | — | Bearer token for WhatsApp API authentication |
+
+When `WHATSAPP_API_URL` is not set, the worker starts without WhatsApp support. Any pending WhatsApp notifications will fail with a descriptive error and follow the normal retry/failure cycle.
 
 ---
 
@@ -657,6 +723,7 @@ Migrations are in `internal/infrastructure/postgres/migrations/`:
 004_create_api_keys.up.sql / .down.sql
 005_add_api_keys_metadata.up.sql / .down.sql    # API key client tracking
 006_add_events_client_id.up.sql / .down.sql      # Event client tracking
+007_add_whatsapp_channel.up.sql / .down.sql       # WhatsApp notification channel
 ```
 
 **Apply all pending migrations**:
@@ -790,7 +857,8 @@ Before deploying to production:
 - [ ] Review resource limits in Kubernetes manifests
 - [ ] Set up Prometheus scraping and alerting
 - [ ] Configure SMTP credentials for email delivery
-- [ ] Apply database migrations (`005_add_api_keys_metadata`, `006_add_events_client_id`)
+- [ ] Configure WhatsApp API credentials (`WHATSAPP_API_URL`, `WHATSAPP_API_TOKEN`) if using WhatsApp notifications
+- [ ] Apply database migrations (up to `007_add_whatsapp_channel`)
 - [ ] Create API keys for all clients with proper metadata
 - [ ] Test graceful shutdown behavior under load
 
@@ -809,7 +877,7 @@ Before deploying to production:
 | Layer | What it validates |
 |-------|-------------------|
 | **Domain** (`entities.NewEvent`) | Invariants: type not empty, type in `ValidEventTypes()`, idempotency key not empty |
-| **Application** (`validation.ValidateEvent`) | Payload shape: required fields per event type, format rules (email contains `@`), amount > 0 |
+| **Application** (`validation.ValidateEvent`) | Payload shape: required fields per event type, format rules (email contains `@`), amount > 0, recipients array (max 500) |
 
 **Error Handling**:
 - `internal/pkg/apperror` defines error codes (`invalid_argument`, `conflict`, `not_found`, `timeout`, `canceled`, `rate_limited`, etc.)
