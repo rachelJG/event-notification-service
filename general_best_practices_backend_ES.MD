@@ -6,6 +6,8 @@
 
 ---
 
+No duplicar codigo que hagan lo mismo
+
 ## 1. Sistema de Control de Versiones (Commits y Ramas)
 
 *   **Conventional Commits**: Obligatorio para historiales legibles y automatización (CHANGELOG y SemVer).
