@@ -296,6 +296,124 @@ func TestExtractRecipientAllTypes(t *testing.T) {
 	}
 }
 
+func TestProcessEventsInvoiceIssuedFanOut(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Residencias Sol",
+		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
+		"recipients":[
+			{"email":"maria@a.com","name":"María","unit_code":"1-A","amount":150.00},
+			{"email":"jose@a.com","name":"José","unit_code":"2-B","amount":200.00},
+			{"email":"ana@a.com","name":"Ana","unit_code":"3-C","amount":175.00}
+		]
+	}`)
+	eventRepo := &fakeEventRepoForWorker{
+		claimed: []entities.Event{
+			{ID: "evt-inv", Type: entities.EventTypeInvoiceIssued, Payload: payload},
+		},
+	}
+	notifRepo := &fakeNotificationRepo{}
+
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
+	count, err := uc.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("expected 3 notifications from fan-out, got %d", count)
+	}
+	if len(notifRepo.created) != 3 {
+		t.Fatalf("expected 3 notifications created, got %d", len(notifRepo.created))
+	}
+
+	// Verify each recipient got their notification
+	emails := make(map[string]bool)
+	for _, n := range notifRepo.created {
+		emails[n.Recipient] = true
+		if n.Channel != entities.ChannelEmail {
+			t.Errorf("expected email channel, got %s", n.Channel)
+		}
+	}
+	for _, want := range []string{"maria@a.com", "jose@a.com", "ana@a.com"} {
+		if !emails[want] {
+			t.Errorf("missing notification for %s", want)
+		}
+	}
+}
+
+func TestProcessEventsInvoiceIssuedBadPayload(t *testing.T) {
+	eventRepo := &fakeEventRepoForWorker{
+		claimed: []entities.Event{
+			{ID: "evt-bad", Type: entities.EventTypeInvoiceIssued, Payload: []byte(`{invalid}`)},
+		},
+	}
+	notifRepo := &fakeNotificationRepo{}
+
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
+	count, _ := uc.Handle(context.Background())
+	if count != 0 {
+		t.Fatalf("expected 0 processed, got %d", count)
+	}
+	if eventRepo.statuses["evt-bad"] != "failed" {
+		t.Fatalf("expected event marked as failed")
+	}
+}
+
+func TestProcessEventsInvoiceSummaryWhatsApp(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Residencias Sol",
+		"invoice_month":"2026-03","total_units":180,"total_amount":27000,
+		"currency":"USD","whatsapp_group_id":"group-xyz",
+		"message":"Se cargó el recibo de marzo"
+	}`)
+	eventRepo := &fakeEventRepoForWorker{
+		claimed: []entities.Event{
+			{ID: "evt-sum", Type: entities.EventTypeInvoiceSummary, Payload: payload},
+		},
+	}
+	notifRepo := &fakeNotificationRepo{}
+
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
+	count, err := uc.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 notification, got %d", count)
+	}
+	if len(notifRepo.created) != 1 {
+		t.Fatalf("expected 1 notification created, got %d", len(notifRepo.created))
+	}
+
+	n := notifRepo.created[0]
+	if n.Channel != entities.ChannelWhatsApp {
+		t.Errorf("expected whatsapp channel, got %s", n.Channel)
+	}
+	if n.Recipient != "group-xyz" {
+		t.Errorf("expected recipient group-xyz, got %s", n.Recipient)
+	}
+	if n.Body != "Se cargó el recibo de marzo" {
+		t.Errorf("unexpected body: %s", n.Body)
+	}
+}
+
+func TestProcessEventsInvoiceSummaryBadPayload(t *testing.T) {
+	eventRepo := &fakeEventRepoForWorker{
+		claimed: []entities.Event{
+			{ID: "evt-bad", Type: entities.EventTypeInvoiceSummary, Payload: []byte(`{invalid}`)},
+		},
+	}
+	notifRepo := &fakeNotificationRepo{}
+
+	uc := ProcessEvents{EventRepo: eventRepo, NotificationRepo: notifRepo, Renderer: &fakeRenderer{}, BatchSize: 10}
+	count, _ := uc.Handle(context.Background())
+	if count != 0 {
+		t.Fatalf("expected 0 processed, got %d", count)
+	}
+	if eventRepo.statuses["evt-bad"] != "failed" {
+		t.Fatalf("expected event marked as failed")
+	}
+}
+
 func TestExtractRecipientUnsupportedType(t *testing.T) {
 	evt := entities.Event{Type: "Unknown", Payload: []byte(`{}`)}
 	_, err := extractRecipient(evt)

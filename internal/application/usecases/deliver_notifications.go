@@ -13,6 +13,7 @@ import (
 type DeliverNotifications struct {
 	NotificationRepo ports.NotificationRepository
 	Sender           ports.EmailSender
+	WhatsAppSender   ports.WhatsAppSender
 	BatchSize        int
 }
 
@@ -31,7 +32,7 @@ func (uc DeliverNotifications) Handle(ctx context.Context) (int, error) {
 			continue
 		}
 
-		if err := uc.Sender.Send(ctx, n.Recipient, n.Subject, n.Body); err != nil {
+		if err := uc.send(ctx, n); err != nil {
 			n.Attempts++
 			lastError := err.Error()
 			if n.Attempts >= n.MaxAttempts {
@@ -59,6 +60,21 @@ func (uc DeliverNotifications) Handle(ctx context.Context) (int, error) {
 	}
 
 	return delivered, nil
+}
+
+// send dispatches the notification to the appropriate channel sender.
+func (uc DeliverNotifications) send(ctx context.Context, n entities.Notification) error {
+	switch n.Channel {
+	case entities.ChannelEmail:
+		return uc.Sender.Send(ctx, n.Recipient, n.Subject, n.Body)
+	case entities.ChannelWhatsApp:
+		if uc.WhatsAppSender == nil {
+			return fmt.Errorf("whatsapp sender not configured")
+		}
+		return uc.WhatsAppSender.SendToGroup(ctx, n.Recipient, n.Body)
+	default:
+		return fmt.Errorf("unsupported channel: %s", n.Channel)
+	}
 }
 
 // retryDelay calculates exponential backoff delay for a given attempt number.
