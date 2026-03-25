@@ -15,9 +15,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rachelJG/event-notification-service/internal/application/usecases"
 	"github.com/rachelJG/event-notification-service/internal/config"
+	"github.com/rachelJG/event-notification-service/internal/domain/ports"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/email"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/logger"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/postgres"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/whatsapp"
 	"go.uber.org/zap"
 )
 
@@ -68,6 +70,14 @@ func main() {
 	sender := email.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPassword, cfg.SMTPFrom)
 	renderer := email.NewTemplateRenderer()
 
+	var whatsAppSender ports.WhatsAppSender
+	if cfg.WhatsAppAPIURL != "" {
+		whatsAppSender = whatsapp.NewSender(cfg.WhatsAppAPIURL, cfg.WhatsAppAPIToken)
+		log.Info("whatsapp sender configured", zap.String("api_url", cfg.WhatsAppAPIURL))
+	} else {
+		log.Warn("whatsapp sender not configured: WHATSAPP_API_URL not set")
+	}
+
 	processUC := usecases.ProcessEvents{
 		EventRepo:        eventRepo,
 		NotificationRepo: notifRepo,
@@ -77,6 +87,7 @@ func main() {
 	deliverUC := usecases.DeliverNotifications{
 		NotificationRepo: notifRepo,
 		Sender:           sender,
+		WhatsAppSender:   whatsAppSender,
 		BatchSize:        cfg.WorkerBatchSize,
 	}
 
