@@ -45,6 +45,19 @@ func TestNewNotification_EmptyEventID(t *testing.T) {
 	}
 }
 
+func TestNewNotification_WhatsAppChannel(t *testing.T) {
+	n, err := NewNotification("event-123", ChannelWhatsApp, "group-xyz", "Invoice Summary", "Se cargó el recibo")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if n.Channel != ChannelWhatsApp {
+		t.Errorf("expected channel whatsapp, got %s", n.Channel)
+	}
+	if n.Recipient != "group-xyz" {
+		t.Errorf("expected recipient group-xyz, got %s", n.Recipient)
+	}
+}
+
 func TestNewNotification_UnsupportedChannel(t *testing.T) {
 	_, err := NewNotification("event-123", Channel("sms"), "user@example.com", "Subject", "Body")
 	if err == nil {

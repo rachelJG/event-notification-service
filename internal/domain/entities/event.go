@@ -15,6 +15,8 @@ const (
 	EventTypePasswordResetRequested EventType = "PasswordResetRequested"
 	EventTypeOrderPaid              EventType = "OrderPaid"
 	EventTypeOrderShipped           EventType = "OrderShipped"
+	EventTypeInvoiceIssued          EventType = "InvoiceIssued"
+	EventTypeInvoiceSummary         EventType = "InvoiceSummary"
 )
 
 // ValidEventTypes returns the set of supported event types.
@@ -24,6 +26,8 @@ func ValidEventTypes() []EventType {
 		EventTypePasswordResetRequested,
 		EventTypeOrderPaid,
 		EventTypeOrderShipped,
+		EventTypeInvoiceIssued,
+		EventTypeInvoiceSummary,
 	}
 }
 
@@ -51,6 +55,34 @@ type OrderShippedPayload struct {
 	UserID         string `json:"user_id"`
 	Carrier        string `json:"carrier"`
 	TrackingNumber string `json:"tracking_number"`
+}
+
+// InvoiceRecipient represents a single recipient within an InvoiceIssued event.
+type InvoiceRecipient struct {
+	Email    string  `json:"email"`
+	Name     string  `json:"name"`
+	UnitCode string  `json:"unit_code"`
+	Amount   float64 `json:"amount"`
+}
+
+type InvoiceIssuedPayload struct {
+	CondominiumID   string             `json:"condominium_id"`
+	CondominiumName string             `json:"condominium_name"`
+	InvoiceMonth    string             `json:"invoice_month"`
+	DueDate         string             `json:"due_date"`
+	Currency        string             `json:"currency"`
+	Recipients      []InvoiceRecipient `json:"recipients"`
+}
+
+type InvoiceSummaryPayload struct {
+	CondominiumID   string  `json:"condominium_id"`
+	CondominiumName string  `json:"condominium_name"`
+	InvoiceMonth    string  `json:"invoice_month"`
+	TotalUnits      int     `json:"total_units"`
+	TotalAmount     float64 `json:"total_amount"`
+	Currency        string  `json:"currency"`
+	WhatsAppGroupID string  `json:"whatsapp_group_id"`
+	Message         string  `json:"message"`
 }
 
 type Event struct {
