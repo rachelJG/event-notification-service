@@ -116,6 +116,121 @@ func TestValidateEventUnsupportedType(t *testing.T) {
 	}
 }
 
+func TestValidateEventInvoiceIssued(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Residencias Sol",
+		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
+		"recipients":[
+			{"email":"maria@email.com","name":"María García","unit_code":"1-A","amount":150.00},
+			{"email":"jose@email.com","name":"José López","unit_code":"2-B","amount":200.00}
+		]
+	}`)
+	if err := ValidateEvent("InvoiceIssued", payload); err != nil {
+		t.Fatalf("expected valid payload, got error: %v", err)
+	}
+}
+
+func TestValidateEventInvoiceIssuedInvalidJSON(t *testing.T) {
+	if err := ValidateEvent("InvoiceIssued", []byte(`not-json`)); err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestValidateEventInvoiceIssuedMissingCondominiumID(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"","condominium_name":"Sol",
+		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
+		"recipients":[{"email":"a@b.com","name":"A","unit_code":"1-A","amount":100}]
+	}`)
+	if err := ValidateEvent("InvoiceIssued", payload); err == nil {
+		t.Fatal("expected validation error for missing condominium_id")
+	}
+}
+
+func TestValidateEventInvoiceIssuedEmptyRecipients(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Sol",
+		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
+		"recipients":[]
+	}`)
+	if err := ValidateEvent("InvoiceIssued", payload); err == nil {
+		t.Fatal("expected validation error for empty recipients")
+	}
+}
+
+func TestValidateEventInvoiceIssuedInvalidRecipientEmail(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Sol",
+		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
+		"recipients":[{"email":"not-email","name":"A","unit_code":"1-A","amount":100}]
+	}`)
+	if err := ValidateEvent("InvoiceIssued", payload); err == nil {
+		t.Fatal("expected validation error for invalid recipient email")
+	}
+}
+
+func TestValidateEventInvoiceIssuedRecipientAmountZero(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Sol",
+		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
+		"recipients":[{"email":"a@b.com","name":"A","unit_code":"1-A","amount":0}]
+	}`)
+	if err := ValidateEvent("InvoiceIssued", payload); err == nil {
+		t.Fatal("expected validation error for amount = 0")
+	}
+}
+
+func TestValidateEventInvoiceSummary(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Residencias Sol",
+		"invoice_month":"2026-03","total_units":180,"total_amount":27000.00,
+		"currency":"USD","whatsapp_group_id":"group-xyz",
+		"message":"Se cargó el recibo de marzo 2026. Total: $27,000"
+	}`)
+	if err := ValidateEvent("InvoiceSummary", payload); err != nil {
+		t.Fatalf("expected valid payload, got error: %v", err)
+	}
+}
+
+func TestValidateEventInvoiceSummaryInvalidJSON(t *testing.T) {
+	if err := ValidateEvent("InvoiceSummary", []byte(`not-json`)); err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestValidateEventInvoiceSummaryMissingWhatsAppGroupID(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Sol",
+		"invoice_month":"2026-03","total_units":10,"total_amount":1000,
+		"currency":"USD","whatsapp_group_id":"","message":"msg"
+	}`)
+	if err := ValidateEvent("InvoiceSummary", payload); err == nil {
+		t.Fatal("expected validation error for missing whatsapp_group_id")
+	}
+}
+
+func TestValidateEventInvoiceSummaryMissingMessage(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Sol",
+		"invoice_month":"2026-03","total_units":10,"total_amount":1000,
+		"currency":"USD","whatsapp_group_id":"g1","message":""
+	}`)
+	if err := ValidateEvent("InvoiceSummary", payload); err == nil {
+		t.Fatal("expected validation error for missing message")
+	}
+}
+
+func TestValidateEventInvoiceSummaryTotalUnitsZero(t *testing.T) {
+	payload := []byte(`{
+		"condominium_id":"c1","condominium_name":"Sol",
+		"invoice_month":"2026-03","total_units":0,"total_amount":1000,
+		"currency":"USD","whatsapp_group_id":"g1","message":"msg"
+	}`)
+	if err := ValidateEvent("InvoiceSummary", payload); err == nil {
+		t.Fatal("expected validation error for total_units = 0")
+	}
+}
+
 func TestValidateEventEmptyType(t *testing.T) {
 	if err := ValidateEvent("", []byte(`{}`)); err == nil {
 		t.Fatal("expected validation error for empty type")
