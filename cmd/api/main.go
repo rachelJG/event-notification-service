@@ -78,8 +78,8 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 	apiKeyRepo := postgres.APIKeyRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
 
 	var eventService appports.EventService = &usecases.EventService{Repo: repo}
-	handler := httpadapter.Handler{EventService: eventService, Logger: log}
-	adminHandler := httpadapter.AdminHandler{APIKeyRepo: apiKeyRepo, Logger: log}
+	handler := httpadapter.Handler{EventService: eventService}
+	adminHandler := httpadapter.AdminHandler{APIKeyRepo: apiKeyRepo}
 
 	shutdownCh := make(chan struct{})
 	health := pgHealthChecker{pool: pool}

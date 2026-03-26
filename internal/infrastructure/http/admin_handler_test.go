@@ -31,8 +31,8 @@ func adminTestAPIKey() entities.APIKey {
 func adminTestRouter() (*gin.Engine, *fakeAPIKeyRepo) {
 	gin.SetMode(gin.TestMode)
 	repo := newFakeAPIKeyRepo(adminTestAPIKey())
-	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
-	adminHandler := AdminHandler{APIKeyRepo: repo, Logger: zap.NewNop()}
+	handler := Handler{EventService: &mockEventService{}}
+	adminHandler := AdminHandler{APIKeyRepo: repo}
 	opts := testRouterOptions()
 	router := NewRouter(handler, adminHandler, nil, repo, zap.NewNop(), opts)
 	return router, repo
@@ -148,36 +148,9 @@ func TestCreateAPIKeyHandlerEmptyClientID(t *testing.T) {
 func TestCreateAPIKeyHandlerKeyGenError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := newFakeAPIKeyRepo(adminTestAPIKey())
-	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
+	handler := Handler{EventService: &mockEventService{}}
 	adminHandler := AdminHandler{
 		APIKeyRepo: repo,
-		Logger:     zap.NewNop(),
-		KeyGenerator: func() (string, error) {
-			return "", errors.New("entropy exhausted")
-		},
-	}
-	router := NewRouter(handler, adminHandler, nil, repo, zap.NewNop(), testRouterOptions())
-
-	body := `{"name":"my-service","scopes":["events:read"],"metadata":{"client_id":"test"}}`
-	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", testRawAPIKey)
-	resp := httptest.NewRecorder()
-
-	router.ServeHTTP(resp, req)
-
-	if resp.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d; body: %s", resp.Code, resp.Body.String())
-	}
-}
-
-func TestCreateAPIKeyHandlerKeyGenErrorNilLogger(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	repo := newFakeAPIKeyRepo(adminTestAPIKey())
-	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
-	adminHandler := AdminHandler{
-		APIKeyRepo: repo,
-		Logger:     nil,
 		KeyGenerator: func() (string, error) {
 			return "", errors.New("entropy exhausted")
 		},
@@ -200,8 +173,8 @@ func TestCreateAPIKeyHandlerKeyGenErrorNilLogger(t *testing.T) {
 func TestCreateAPIKeyHandlerRepoError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	failRepo := &failingAPIKeyRepo{fakeAPIKeyRepo: newFakeAPIKeyRepo(adminTestAPIKey()), createErr: apperror.Internal("db down", nil)}
-	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
-	adminHandler := AdminHandler{APIKeyRepo: failRepo, Logger: zap.NewNop()}
+	handler := Handler{EventService: &mockEventService{}}
+	adminHandler := AdminHandler{APIKeyRepo: failRepo}
 	router := NewRouter(handler, adminHandler, nil, failRepo, zap.NewNop(), testRouterOptions())
 
 	body := `{"name":"fail-key","scopes":["events:read"],"metadata":{"client_id":"test"}}`
@@ -217,25 +190,6 @@ func TestCreateAPIKeyHandlerRepoError(t *testing.T) {
 	}
 }
 
-func TestCreateAPIKeyHandlerNilLogger(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	failRepo := &failingAPIKeyRepo{fakeAPIKeyRepo: newFakeAPIKeyRepo(adminTestAPIKey()), createErr: apperror.Internal("db down", nil)}
-	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
-	adminHandler := AdminHandler{APIKeyRepo: failRepo, Logger: nil}
-	router := NewRouter(handler, adminHandler, nil, failRepo, zap.NewNop(), testRouterOptions())
-
-	body := `{"name":"fail-key","scopes":["events:read"],"metadata":{"client_id":"test"}}`
-	req := httptest.NewRequest(http.MethodPost, "/admin/api-keys", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", testRawAPIKey)
-	resp := httptest.NewRecorder()
-
-	router.ServeHTTP(resp, req)
-
-	if resp.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", resp.Code)
-	}
-}
 
 func TestListAPIKeysHandlerSuccess(t *testing.T) {
 	router, _ := adminTestRouter()
@@ -263,8 +217,8 @@ func TestListAPIKeysHandlerSuccess(t *testing.T) {
 func TestListAPIKeysHandlerRepoError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	failRepo := &failingAPIKeyRepo{fakeAPIKeyRepo: newFakeAPIKeyRepo(adminTestAPIKey()), listErr: apperror.Internal("db down", nil)}
-	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
-	adminHandler := AdminHandler{APIKeyRepo: failRepo, Logger: zap.NewNop()}
+	handler := Handler{EventService: &mockEventService{}}
+	adminHandler := AdminHandler{APIKeyRepo: failRepo}
 	router := NewRouter(handler, adminHandler, nil, failRepo, zap.NewNop(), testRouterOptions())
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/api-keys", nil)
@@ -279,24 +233,6 @@ func TestListAPIKeysHandlerRepoError(t *testing.T) {
 	}
 }
 
-func TestListAPIKeysHandlerNilLogger(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	failRepo := &failingAPIKeyRepo{fakeAPIKeyRepo: newFakeAPIKeyRepo(adminTestAPIKey()), listErr: apperror.Internal("db down", nil)}
-	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
-	adminHandler := AdminHandler{APIKeyRepo: failRepo, Logger: nil}
-	router := NewRouter(handler, adminHandler, nil, failRepo, zap.NewNop(), testRouterOptions())
-
-	req := httptest.NewRequest(http.MethodGet, "/admin/api-keys", nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", testRawAPIKey)
-	resp := httptest.NewRecorder()
-
-	router.ServeHTTP(resp, req)
-
-	if resp.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", resp.Code)
-	}
-}
 
 func TestRevokeAPIKeyHandlerSuccess(t *testing.T) {
 	router, repo := adminTestRouter()
@@ -346,24 +282,6 @@ func TestRevokeAPIKeyHandlerNotFound(t *testing.T) {
 	}
 }
 
-func TestRevokeAPIKeyHandlerNilLogger(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	repo := newFakeAPIKeyRepo(adminTestAPIKey())
-	handler := Handler{EventService: &mockEventService{}, Logger: zap.NewNop()}
-	adminHandler := AdminHandler{APIKeyRepo: repo, Logger: nil}
-	router := NewRouter(handler, adminHandler, nil, repo, zap.NewNop(), testRouterOptions())
-
-	req := httptest.NewRequest(http.MethodDelete, "/admin/api-keys/nonexistent", nil)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", testRawAPIKey)
-	resp := httptest.NewRecorder()
-
-	router.ServeHTTP(resp, req)
-
-	if resp.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", resp.Code)
-	}
-}
 
 func TestAdminEndpointsRequireAuth(t *testing.T) {
 	router, _ := adminTestRouter()

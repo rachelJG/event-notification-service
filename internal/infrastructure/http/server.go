@@ -21,6 +21,7 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 	router.Use(ginzap.Ginzap(logger, "", true))
 	router.Use(ginzap.RecoveryWithZap(logger, true))
 	router.Use(middleware.RequestID())
+	router.Use(middleware.ErrorHandler(logger))
 	// Security Headers
 	router.Use(func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
