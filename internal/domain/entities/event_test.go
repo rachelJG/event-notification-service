@@ -89,7 +89,7 @@ func TestNewEvent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			event, err := NewEvent(tt.eventType, tt.idempotencyKey, tt.payload)
+			event, err := NewEvent(tt.eventType, tt.idempotencyKey, tt.payload, nil)
 
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -115,7 +115,7 @@ func TestNewEvent_AllValidTypesAccepted(t *testing.T) {
 		t.Run(et, func(t *testing.T) {
 			t.Parallel()
 
-			event, err := NewEvent(et, "idem-key", []byte(`{}`))
+			event, err := NewEvent(et, "idem-key", []byte(`{}`), nil)
 			require.NoError(t, err, "event type %s should be accepted", et)
 			assert.Equal(t, et, event.Type)
 		})

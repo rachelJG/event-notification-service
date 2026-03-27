@@ -94,6 +94,11 @@ type Config struct {
 	TrustedProxies []string
 	// ShutdownTimeout is the maximum time to wait for graceful shutdown (default: 15s)
 	ShutdownTimeout time.Duration
+
+	// OTelServiceName is the service name reported in traces (default: "event-notification-service")
+	OTelServiceName string
+	// OTelOTLPEndpoint is the OTLP HTTP endpoint for exporting traces (e.g. "localhost:4318"). Empty disables OTLP export.
+	OTelOTLPEndpoint string
 }
 
 // Load loads the application configuration from environment variables with sensible defaults.
@@ -166,6 +171,9 @@ func Load() Config {
 
 		TrustedProxies:  getenvCSVDefault("TRUSTED_PROXIES", nil),
 		ShutdownTimeout: getenvDurationSecondsDefault("SHUTDOWN_TIMEOUT", 15),
+
+		OTelServiceName:  getenvDefault("OTEL_SERVICE_NAME", "event-notification-service"),
+		OTelOTLPEndpoint: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
 	}
 }
 

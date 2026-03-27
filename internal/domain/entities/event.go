@@ -74,7 +74,7 @@ type InvoiceIssuedPayload struct {
 	Recipients      []InvoiceRecipient `json:"recipients"`
 }
 
-type InvoiceSummaryPayload struct {
+type InvoiceSummaryosePayload struct {
 	CondominiumID   string  `json:"condominium_id"`
 	CondominiumName string  `json:"condominium_name"`
 	InvoiceMonth    string  `json:"invoice_month"`

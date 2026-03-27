@@ -32,14 +32,14 @@ func (s *fakeWhatsAppSender) SendToGroup(_ context.Context, groupID, message str
 }
 
 type sentEmail struct {
-	To, Subject, Body string
+	From, To, Subject, Body string
 }
 
-func (s *fakeSender) Send(_ context.Context, to, subject, body string) error {
+func (s *fakeSender) Send(_ context.Context, from, to, subject, body string) error {
 	if s.err != nil {
 		return s.err
 	}
-	s.sent = append(s.sent, sentEmail{To: to, Subject: subject, Body: body})
+	s.sent = append(s.sent, sentEmail{From: from, To: to, Subject: subject, Body: body})
 	return nil
 }
 

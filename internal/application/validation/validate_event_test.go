@@ -1,238 +1,225 @@
 package validation
 
-import "testing"
+import (
+	"testing"
 
-func TestValidateEventUserRegistered(t *testing.T) {
-	payload := []byte(`{"user_id":"123","email":"user@example.com","name":"Jane"}`)
-	if err := ValidateEvent("UserRegistered", payload); err != nil {
-		t.Fatalf("expected valid payload, got error: %v", err)
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func validEmailNotification() NotificationSpec {
+	return NotificationSpec{
+		Channel:    "email",
+		Subject:    "Test Subject",
+		Body:       "<p>Hello</p>",
+		Recipients: []string{"user@example.com"},
 	}
 }
 
-func TestValidateEventUserRegisteredMissingFields(t *testing.T) {
-	payload := []byte(`{"user_id":"","email":"user@example.com","name":"Jane"}`)
-	if err := ValidateEvent("UserRegistered", payload); err == nil {
-		t.Fatal("expected validation error for missing user_id")
+func validWhatsAppNotification() NotificationSpec {
+	return NotificationSpec{
+		Channel:    "whatsapp",
+		Body:       "Hello group",
+		Recipients: []string{"group-123"},
 	}
 }
 
-func TestValidateEventUserRegisteredInvalidEmail(t *testing.T) {
-	payload := []byte(`{"user_id":"1","email":"not-an-email","name":"Jane"}`)
-	if err := ValidateEvent("UserRegistered", payload); err == nil {
-		t.Fatal("expected validation error for invalid email")
+func TestValidateEvent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		eventType     string
+		payload       []byte
+		notifications []NotificationSpec
+		wantErr       string
+	}{
+		{
+			name:          "valid email notification",
+			eventType:     "UserRegistered",
+			payload:       []byte(`{"user_id":"123"}`),
+			notifications: []NotificationSpec{validEmailNotification()},
+		},
+		{
+			name:          "valid whatsapp notification",
+			eventType:     "InvoiceSummary",
+			payload:       []byte(`{"condominium_id":"c1"}`),
+			notifications: []NotificationSpec{validWhatsAppNotification()},
+		},
+		{
+			name:      "valid mixed channels",
+			eventType: "InvoiceIssued",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				validEmailNotification(),
+				validWhatsAppNotification(),
+			},
+		},
+		{
+			name:          "nil payload is accepted",
+			eventType:     "OrderPaid",
+			payload:       nil,
+			notifications: []NotificationSpec{validEmailNotification()},
+		},
+		{
+			name:          "empty payload is accepted",
+			eventType:     "OrderPaid",
+			payload:       []byte{},
+			notifications: []NotificationSpec{validEmailNotification()},
+		},
+		{
+			name:          "invalid JSON payload",
+			eventType:     "UserRegistered",
+			payload:       []byte(`not-json`),
+			notifications: []NotificationSpec{validEmailNotification()},
+			wantErr:       "invalid JSON payload",
+		},
+		{
+			name:          "empty notifications",
+			eventType:     "UserRegistered",
+			payload:       []byte(`{}`),
+			notifications: []NotificationSpec{},
+			wantErr:       "at least one notification is required",
+		},
+		{
+			name:          "nil notifications",
+			eventType:     "UserRegistered",
+			payload:       []byte(`{}`),
+			notifications: nil,
+			wantErr:       "at least one notification is required",
+		},
+		{
+			name:      "unsupported channel",
+			eventType: "UserRegistered",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "sms", Body: "hello", Recipients: []string{"123"}},
+			},
+			wantErr: `notifications[0]: unsupported channel "sms"`,
+		},
+		{
+			name:      "empty recipients",
+			eventType: "UserRegistered",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "email", Subject: "Hi", Body: "hello", Recipients: []string{}},
+			},
+			wantErr: "notifications[0]: at least one recipient is required",
+		},
+		{
+			name:      "empty body",
+			eventType: "UserRegistered",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "email", Subject: "Hi", Body: "", Recipients: []string{"a@b.com"}},
+			},
+			wantErr: "notifications[0]: body is required",
+		},
+		{
+			name:      "email missing subject",
+			eventType: "UserRegistered",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "email", Subject: "", Body: "hello", Recipients: []string{"a@b.com"}},
+			},
+			wantErr: "notifications[0]: subject is required for email channel",
+		},
+		{
+			name:      "email invalid recipient",
+			eventType: "UserRegistered",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "email", Subject: "Hi", Body: "hello", Recipients: []string{"not-email"}},
+			},
+			wantErr: "notifications[0].recipients[0]: invalid email address",
+		},
+		{
+			name:      "whatsapp empty group ID",
+			eventType: "InvoiceSummary",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "whatsapp", Body: "hello", Recipients: []string{""}},
+			},
+			wantErr: "notifications[0].recipients[0]: empty group ID",
+		},
+		{
+			name:      "whatsapp subject is optional",
+			eventType: "InvoiceSummary",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "whatsapp", Subject: "", Body: "hello", Recipients: []string{"group-1"}},
+			},
+		},
+		{
+			name:      "email with HTML body",
+			eventType: "UserRegistered",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "email", Subject: "Welcome", Body: "<h1>Welcome!</h1><p>Thanks for joining</p>", Recipients: []string{"user@test.com"}},
+			},
+		},
+		{
+			name:      "multiple email recipients (fan-out)",
+			eventType: "InvoiceIssued",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "email", Subject: "Recibo", Body: "Su recibo", Recipients: []string{"a@b.com", "c@d.com", "e@f.com"}},
+			},
+		},
+		{
+			name:      "email with valid from",
+			eventType: "UserRegistered",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "email", From: "noreply@client.com", Subject: "Welcome", Body: "Hello", Recipients: []string{"a@b.com"}},
+			},
+		},
+		{
+			name:      "email with invalid from",
+			eventType: "UserRegistered",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "email", From: "not-an-email", Subject: "Welcome", Body: "Hello", Recipients: []string{"a@b.com"}},
+			},
+			wantErr: "notifications[0]: invalid from email address",
+		},
+		{
+			name:      "email with empty from uses default",
+			eventType: "UserRegistered",
+			payload:   []byte(`{}`),
+			notifications: []NotificationSpec{
+				{Channel: "email", From: "", Subject: "Welcome", Body: "Hello", Recipients: []string{"a@b.com"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := ValidateEvent(tt.eventType, tt.payload, tt.notifications)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+		})
 	}
 }
 
-func TestValidateEventUserRegisteredInvalidJSON(t *testing.T) {
-	if err := ValidateEvent("UserRegistered", []byte(`not-json`)); err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
+func TestValidateEvent_TooManyRecipients(t *testing.T) {
+	t.Parallel()
 
-func TestValidateEventPasswordResetRequested(t *testing.T) {
-	payload := []byte(`{"user_id":"1","email":"user@example.com"}`)
-	if err := ValidateEvent("PasswordResetRequested", payload); err != nil {
-		t.Fatalf("expected valid payload, got error: %v", err)
+	recipients := make([]string, 501)
+	for i := range recipients {
+		recipients[i] = "user@example.com"
 	}
-}
 
-func TestValidateEventPasswordResetRequestedMissingFields(t *testing.T) {
-	payload := []byte(`{"user_id":"","email":"user@example.com"}`)
-	if err := ValidateEvent("PasswordResetRequested", payload); err == nil {
-		t.Fatal("expected validation error for missing user_id")
-	}
-}
-
-func TestValidateEventPasswordResetRequestedInvalidEmail(t *testing.T) {
-	payload := []byte(`{"user_id":"1","email":"not-an-email"}`)
-	if err := ValidateEvent("PasswordResetRequested", payload); err == nil {
-		t.Fatal("expected validation error for invalid email")
-	}
-}
-
-func TestValidateEventPasswordResetRequestedInvalidJSON(t *testing.T) {
-	if err := ValidateEvent("PasswordResetRequested", []byte(`not-json`)); err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-func TestValidateEventOrderPaid(t *testing.T) {
-	payload := []byte(`{"order_id":"o1","user_id":"u1","amount":9.99,"currency":"USD"}`)
-	if err := ValidateEvent("OrderPaid", payload); err != nil {
-		t.Fatalf("expected valid payload, got error: %v", err)
-	}
-}
-
-func TestValidateEventOrderPaidAmountZero(t *testing.T) {
-	payload := []byte(`{"order_id":"o1","user_id":"u1","amount":0,"currency":"USD"}`)
-	if err := ValidateEvent("OrderPaid", payload); err == nil {
-		t.Fatal("expected validation error for amount = 0")
-	}
-}
-
-func TestValidateEventOrderPaidAmountNegative(t *testing.T) {
-	payload := []byte(`{"order_id":"o1","user_id":"u1","amount":-1,"currency":"USD"}`)
-	if err := ValidateEvent("OrderPaid", payload); err == nil {
-		t.Fatal("expected validation error for negative amount")
-	}
-}
-
-func TestValidateEventOrderPaidMissingFields(t *testing.T) {
-	payload := []byte(`{"order_id":"","user_id":"u1","amount":9.99,"currency":"USD"}`)
-	if err := ValidateEvent("OrderPaid", payload); err == nil {
-		t.Fatal("expected validation error for missing order_id")
-	}
-}
-
-func TestValidateEventOrderPaidInvalidJSON(t *testing.T) {
-	if err := ValidateEvent("OrderPaid", []byte(`not-json`)); err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-func TestValidateEventOrderShipped(t *testing.T) {
-	payload := []byte(`{"order_id":"o1","user_id":"u1","carrier":"DHL","tracking_number":"TRK123"}`)
-	if err := ValidateEvent("OrderShipped", payload); err != nil {
-		t.Fatalf("expected valid payload, got error: %v", err)
-	}
-}
-
-func TestValidateEventOrderShippedMissingFields(t *testing.T) {
-	payload := []byte(`{"order_id":"o1","user_id":"u1","carrier":"","tracking_number":"TRK123"}`)
-	if err := ValidateEvent("OrderShipped", payload); err == nil {
-		t.Fatal("expected validation error for missing carrier")
-	}
-}
-
-func TestValidateEventOrderShippedInvalidJSON(t *testing.T) {
-	if err := ValidateEvent("OrderShipped", []byte(`not-json`)); err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-func TestValidateEventUnsupportedType(t *testing.T) {
-	if err := ValidateEvent("Unknown", []byte(`{"foo":"bar"}`)); err == nil {
-		t.Fatal("expected validation error for unsupported type")
-	}
-}
-
-func TestValidateEventInvoiceIssued(t *testing.T) {
-	payload := []byte(`{
-		"condominium_id":"c1","condominium_name":"Residencias Sol",
-		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
-		"recipients":[
-			{"email":"maria@email.com","name":"María García","unit_code":"1-A","amount":150.00},
-			{"email":"jose@email.com","name":"José López","unit_code":"2-B","amount":200.00}
-		]
-	}`)
-	if err := ValidateEvent("InvoiceIssued", payload); err != nil {
-		t.Fatalf("expected valid payload, got error: %v", err)
-	}
-}
-
-func TestValidateEventInvoiceIssuedInvalidJSON(t *testing.T) {
-	if err := ValidateEvent("InvoiceIssued", []byte(`not-json`)); err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-func TestValidateEventInvoiceIssuedMissingCondominiumID(t *testing.T) {
-	payload := []byte(`{
-		"condominium_id":"","condominium_name":"Sol",
-		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
-		"recipients":[{"email":"a@b.com","name":"A","unit_code":"1-A","amount":100}]
-	}`)
-	if err := ValidateEvent("InvoiceIssued", payload); err == nil {
-		t.Fatal("expected validation error for missing condominium_id")
-	}
-}
-
-func TestValidateEventInvoiceIssuedEmptyRecipients(t *testing.T) {
-	payload := []byte(`{
-		"condominium_id":"c1","condominium_name":"Sol",
-		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
-		"recipients":[]
-	}`)
-	if err := ValidateEvent("InvoiceIssued", payload); err == nil {
-		t.Fatal("expected validation error for empty recipients")
-	}
-}
-
-func TestValidateEventInvoiceIssuedInvalidRecipientEmail(t *testing.T) {
-	payload := []byte(`{
-		"condominium_id":"c1","condominium_name":"Sol",
-		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
-		"recipients":[{"email":"not-email","name":"A","unit_code":"1-A","amount":100}]
-	}`)
-	if err := ValidateEvent("InvoiceIssued", payload); err == nil {
-		t.Fatal("expected validation error for invalid recipient email")
-	}
-}
-
-func TestValidateEventInvoiceIssuedRecipientAmountZero(t *testing.T) {
-	payload := []byte(`{
-		"condominium_id":"c1","condominium_name":"Sol",
-		"invoice_month":"2026-03","due_date":"2026-04-10","currency":"USD",
-		"recipients":[{"email":"a@b.com","name":"A","unit_code":"1-A","amount":0}]
-	}`)
-	if err := ValidateEvent("InvoiceIssued", payload); err == nil {
-		t.Fatal("expected validation error for amount = 0")
-	}
-}
-
-func TestValidateEventInvoiceSummary(t *testing.T) {
-	payload := []byte(`{
-		"condominium_id":"c1","condominium_name":"Residencias Sol",
-		"invoice_month":"2026-03","total_units":180,"total_amount":27000.00,
-		"currency":"USD","whatsapp_group_id":"group-xyz",
-		"message":"Se cargó el recibo de marzo 2026. Total: $27,000"
-	}`)
-	if err := ValidateEvent("InvoiceSummary", payload); err != nil {
-		t.Fatalf("expected valid payload, got error: %v", err)
-	}
-}
-
-func TestValidateEventInvoiceSummaryInvalidJSON(t *testing.T) {
-	if err := ValidateEvent("InvoiceSummary", []byte(`not-json`)); err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-func TestValidateEventInvoiceSummaryMissingWhatsAppGroupID(t *testing.T) {
-	payload := []byte(`{
-		"condominium_id":"c1","condominium_name":"Sol",
-		"invoice_month":"2026-03","total_units":10,"total_amount":1000,
-		"currency":"USD","whatsapp_group_id":"","message":"msg"
-	}`)
-	if err := ValidateEvent("InvoiceSummary", payload); err == nil {
-		t.Fatal("expected validation error for missing whatsapp_group_id")
-	}
-}
-
-func TestValidateEventInvoiceSummaryMissingMessage(t *testing.T) {
-	payload := []byte(`{
-		"condominium_id":"c1","condominium_name":"Sol",
-		"invoice_month":"2026-03","total_units":10,"total_amount":1000,
-		"currency":"USD","whatsapp_group_id":"g1","message":""
-	}`)
-	if err := ValidateEvent("InvoiceSummary", payload); err == nil {
-		t.Fatal("expected validation error for missing message")
-	}
-}
-
-func TestValidateEventInvoiceSummaryTotalUnitsZero(t *testing.T) {
-	payload := []byte(`{
-		"condominium_id":"c1","condominium_name":"Sol",
-		"invoice_month":"2026-03","total_units":0,"total_amount":1000,
-		"currency":"USD","whatsapp_group_id":"g1","message":"msg"
-	}`)
-	if err := ValidateEvent("InvoiceSummary", payload); err == nil {
-		t.Fatal("expected validation error for total_units = 0")
-	}
-}
-
-func TestValidateEventEmptyType(t *testing.T) {
-	if err := ValidateEvent("", []byte(`{}`)); err == nil {
-		t.Fatal("expected validation error for empty type")
-	}
+	err := ValidateEvent("UserRegistered", []byte(`{}`), []NotificationSpec{
+		{Channel: "email", Subject: "Hi", Body: "hello", Recipients: recipients},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum of 500")
 }

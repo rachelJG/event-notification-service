@@ -23,14 +23,19 @@ services:
       - CORS_ALLOWED_HEADERS=Origin,Content-Length,Content-Type,Idempotency-Key,Authorization
       - HSTS_ENABLED=false
       - HSTS_MAX_AGE_SECONDS=31536000
+      - OTEL_SERVICE_NAME=event-notification-api
+      - OTEL_EXPORTER_OTLP_ENDPOINT=tempo:4318
     depends_on:
       - postgres
+      - tempo
     restart: unless-stopped
 
   worker:
     build:
       context: .
       target: worker
+    ports:
+      - "9090:9090"
     environment:
       - PG_DSN=postgres://postgres:postgres@postgres:5432/events?sslmode=disable
       - LOG_LEVEL=info
@@ -44,8 +49,11 @@ services:
       - WORKER_DELIVER_INTERVAL=3
       - WORKER_BATCH_SIZE=50
       - WORKER_MAX_RETRIES=5
+      - OTEL_SERVICE_NAME=event-notification-worker
+      - OTEL_EXPORTER_OTLP_ENDPOINT=tempo:4318
     depends_on:
       - postgres
+      - tempo
     restart: unless-stopped
 
   postgres:
@@ -59,5 +67,70 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # ── Observability stack ──────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+      - --enable-feature=exemplar-storage
+
+  tempo:
+    image: grafana/tempo:latest
+    ports:
+      - "3200:3200"   # Tempo HTTP API
+      - "4318:4318"   # OTLP HTTP receiver
+    volumes:
+      - ./observability/tempo.yml:/etc/tempo.yml
+      - tempo_data:/var/tempo
+    command: ["-config.file=/etc/tempo.yml"]
+    depends_on:
+      - prometheus
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./observability/promtail.yml:/etc/promtail/config.yml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: ["-config.file=/etc/promtail/config.yml"]
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
 volumes:
   postgres_data:
+  prometheus_data:
+  tempo_data:
+  loki_data:
+  grafana_data:

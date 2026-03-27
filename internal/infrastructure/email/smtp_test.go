@@ -132,7 +132,7 @@ func TestSendRespectsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	err := s.Send(ctx, "to@test.com", "subject", "body")
+	err := s.Send(ctx, "", "to@test.com", "subject", "body")
 	if err == nil {
 		t.Fatal("expected error from canceled context, got nil")
 	}
@@ -148,7 +148,7 @@ func TestSendWithDeadlineExceeded(t *testing.T) {
 	defer cancel()
 	time.Sleep(time.Millisecond) // ensure deadline passes
 
-	err := s.Send(ctx, "to@test.com", "subject", "body")
+	err := s.Send(ctx, "", "to@test.com", "subject", "body")
 	if err == nil {
 		t.Fatal("expected error from expired context, got nil")
 	}
@@ -161,7 +161,7 @@ func TestSendConnectionRefused(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	err := s.Send(ctx, "to@test.com", "subject", "body")
+	err := s.Send(ctx, "", "to@test.com", "subject", "body")
 	if err == nil {
 		t.Fatal("expected error from connection refused, got nil")
 	}
@@ -193,7 +193,7 @@ func TestSendContextCanceledDuringSend(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	sendErr := s.Send(ctx, "to@test.com", "subject", "body")
+	sendErr := s.Send(ctx, "", "to@test.com", "subject", "body")
 	if sendErr == nil {
 		t.Fatal("expected error from context cancellation during send")
 	}
@@ -217,7 +217,7 @@ func TestDialAndSend_Success(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := s.Send(ctx, "to@test.com", "Test Subject", "Hello"); err != nil {
+	if err := s.Send(ctx, "", "to@test.com", "Test Subject", "Hello"); err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 }
@@ -229,9 +229,51 @@ func TestSendNoAuth(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	err := s.Send(ctx, "to@test.com", "subject", "body")
+	err := s.Send(ctx, "", "to@test.com", "subject", "body")
 	// Will fail at connection level, but exercises the auth=nil path
 	if err == nil {
 		t.Fatal("expected error from connection refused, got nil")
+	}
+}
+
+func TestSendFromOverride(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	go fakeSMTPServer(t, ln)
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	s := NewSMTPSender("127.0.0.1", port, "", "", "default@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// When from is provided, it should override the default
+	if err := s.Send(ctx, "custom@client.com", "to@test.com", "Subject", "Body"); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+}
+
+func TestSendFromFallbackToDefault(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	go fakeSMTPServer(t, ln)
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	s := NewSMTPSender("127.0.0.1", port, "", "", "default@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// When from is empty, it should use the configured default
+	if err := s.Send(ctx, "", "to@test.com", "Subject", "Body"); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
 	}
 }

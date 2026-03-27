@@ -10,6 +10,10 @@ import (
 	"github.com/rachelJG/event-notification-service/internal/domain/entities"
 	"github.com/rachelJG/event-notification-service/internal/domain/ports"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type NotificationRepository struct {
@@ -18,6 +22,15 @@ type NotificationRepository struct {
 }
 
 func (r NotificationRepository) Create(ctx context.Context, n entities.Notification) (string, error) {
+	ctx, span := otel.Tracer("postgres").Start(ctx, "NotificationRepository.Create",
+		trace.WithAttributes(
+			attribute.String("db.operation", "INSERT"),
+			attribute.String("db.table", "notifications"),
+			attribute.String("notification.channel", string(n.Channel)),
+		),
+	)
+	defer span.End()
+
 	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
 	defer cancel()
 
@@ -32,6 +45,8 @@ func (r NotificationRepository) Create(ctx context.Context, n entities.Notificat
 		RETURNING id
 	`, id, n.EventID, n.Channel, n.Recipient, n.Subject, n.Body, n.Status, n.Attempts, n.MaxAttempts, n.CreatedAt, n.UpdatedAt).Scan(&id)
 	if err != nil {
+		span.SetStatus(codes.Error, "insert failed")
+		span.RecordError(err)
 		return "", mapDBError(err)
 	}
 
@@ -39,6 +54,15 @@ func (r NotificationRepository) Create(ctx context.Context, n entities.Notificat
 }
 
 func (r NotificationRepository) FindPending(ctx context.Context, limit int) ([]entities.Notification, error) {
+	ctx, span := otel.Tracer("postgres").Start(ctx, "NotificationRepository.FindPending",
+		trace.WithAttributes(
+			attribute.String("db.operation", "SELECT"),
+			attribute.String("db.table", "notifications"),
+			attribute.Int("db.limit", limit),
+		),
+	)
+	defer span.End()
+
 	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
 	defer cancel()
 
@@ -51,6 +75,8 @@ func (r NotificationRepository) FindPending(ctx context.Context, limit int) ([]e
 		LIMIT $1
 	`, limit)
 	if err != nil {
+		span.SetStatus(codes.Error, "query failed")
+		span.RecordError(err)
 		return nil, mapDBError(err)
 	}
 	defer rows.Close()
@@ -65,6 +91,8 @@ func (r NotificationRepository) FindPending(ctx context.Context, limit int) ([]e
 			&n.Status, &n.Attempts, &n.MaxAttempts,
 			&lastError, &nextRetryAt, &n.CreatedAt, &n.UpdatedAt,
 		); err != nil {
+			span.SetStatus(codes.Error, "scan failed")
+			span.RecordError(err)
 			return nil, mapDBError(err)
 		}
 		if lastError != nil {
@@ -75,10 +103,21 @@ func (r NotificationRepository) FindPending(ctx context.Context, limit int) ([]e
 		}
 		notifications = append(notifications, n)
 	}
+	span.SetAttributes(attribute.Int("db.rows_returned", len(notifications)))
 	return notifications, rows.Err()
 }
 
 func (r NotificationRepository) UpdateStatus(ctx context.Context, id string, update ports.NotificationUpdate) error {
+	ctx, span := otel.Tracer("postgres").Start(ctx, "NotificationRepository.UpdateStatus",
+		trace.WithAttributes(
+			attribute.String("db.operation", "UPDATE"),
+			attribute.String("db.table", "notifications"),
+			attribute.String("notification.id", id),
+			attribute.String("notification.status", string(update.Status)),
+		),
+	)
+	defer span.End()
+
 	ctx, cancel := withQueryTimeout(ctx, r.QueryTimeout)
 	defer cancel()
 
@@ -98,9 +137,12 @@ func (r NotificationRepository) UpdateStatus(ctx context.Context, id string, upd
 		WHERE id = $5
 	`, update.Status, update.Attempts, lastError, nextRetryAt, id)
 	if err != nil {
+		span.SetStatus(codes.Error, "update failed")
+		span.RecordError(err)
 		return mapDBError(err)
 	}
 	if ct.RowsAffected() == 0 {
+		span.SetStatus(codes.Error, "not found")
 		return apperror.NotFound("notification not found", errors.New("no rows affected"))
 	}
 	return nil
