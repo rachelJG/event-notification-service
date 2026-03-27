@@ -14,7 +14,9 @@ import (
 
 // APIKeyRepository implements ports.APIKeyRepository using pgxpool.
 type APIKeyRepository struct {
-	Pool         *pgxpool.Pool
+	//Pool is a connection pool to the PostgreSQL database
+	Pool *pgxpool.Pool
+	//QueryTimeout is the timeout for query operations, including the health check
 	QueryTimeout time.Duration
 }
 

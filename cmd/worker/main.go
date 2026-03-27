@@ -19,6 +19,7 @@ import (
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/email"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/logger"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/postgres"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/telemetry"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/whatsapp"
 	"go.uber.org/zap"
 )
@@ -49,6 +50,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	otelShutdown, err := telemetry.Init(ctx, telemetry.Config{
+		ServiceName:    cfg.OTelServiceName + "-worker",
+		ServiceVersion: Version,
+		Environment:    cfg.AppEnv,
+		OTLPEndpoint:   cfg.OTelOTLPEndpoint,
+	})
+	if err != nil {
+		log.Fatal("init telemetry", zap.Error(err))
+	}
+
 	poolCfg, err := pgxpool.ParseConfig(cfg.PGDSN)
 	if err != nil {
 		log.Fatal("parse pg dsn", zap.Error(err))
@@ -68,7 +79,6 @@ func main() {
 	eventRepo := postgres.EventRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
 	notifRepo := postgres.NotificationRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
 	sender := email.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPassword, cfg.SMTPFrom)
-	renderer := email.NewTemplateRenderer()
 
 	var whatsAppSender ports.WhatsAppSender
 	if cfg.WhatsAppAPIURL != "" {
@@ -81,7 +91,6 @@ func main() {
 	processUC := usecases.ProcessEvents{
 		EventRepo:        eventRepo,
 		NotificationRepo: notifRepo,
-		Renderer:         renderer,
 		BatchSize:        cfg.WorkerBatchSize,
 	}
 	deliverUC := usecases.DeliverNotifications{
@@ -166,6 +175,11 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	_ = metricsServer.Shutdown(shutdownCtx)
+	if otelShutdown != nil {
+		if otelErr := otelShutdown(shutdownCtx); otelErr != nil {
+			log.Error("otel shutdown error", zap.Error(otelErr))
+		}
+	}
 	pool.Close()
 	log.Info("worker stopped")
 }

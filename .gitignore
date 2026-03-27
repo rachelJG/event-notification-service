@@ -29,9 +29,14 @@ go.work.sum
 
 # binary
 bin/
+worker
 # Editor/IDE
 # .idea/
 # .vscode/
 
 # deploy
 deploy/k8s/secret.yaml
+
+# Claude Code
+.claude/
+skills-lock.json

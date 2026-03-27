@@ -29,6 +29,7 @@ type Notification struct {
 	ID          string
 	EventID     string
 	Channel     Channel
+	From        string // sender address (email only); empty means use service default
 	Recipient   string
 	Subject     string
 	Body        string
@@ -42,7 +43,7 @@ type Notification struct {
 }
 
 // NewNotification constructs a Notification enforcing domain invariants.
-func NewNotification(eventID string, channel Channel, recipient, subject, body string) (Notification, error) {
+func NewNotification(eventID string, channel Channel, from, recipient, subject, body string) (Notification, error) {
 	if strings.TrimSpace(eventID) == "" {
 		return Notification{}, errors.New("event_id is required")
 	}
@@ -52,8 +53,8 @@ func NewNotification(eventID string, channel Channel, recipient, subject, body s
 	if strings.TrimSpace(recipient) == "" {
 		return Notification{}, errors.New("recipient is required")
 	}
-	if strings.TrimSpace(subject) == "" {
-		return Notification{}, errors.New("subject is required")
+	if channel == ChannelEmail && strings.TrimSpace(subject) == "" {
+		return Notification{}, errors.New("subject is required for email channel")
 	}
 	if strings.TrimSpace(body) == "" {
 		return Notification{}, errors.New("body is required")
@@ -61,6 +62,7 @@ func NewNotification(eventID string, channel Channel, recipient, subject, body s
 	return Notification{
 		EventID:     eventID,
 		Channel:     channel,
+		From:        from,
 		Recipient:   recipient,
 		Subject:     subject,
 		Body:        body,

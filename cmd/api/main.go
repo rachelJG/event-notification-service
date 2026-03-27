@@ -17,6 +17,7 @@ import (
 	httpadapter "github.com/rachelJG/event-notification-service/internal/infrastructure/http"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/logger"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/postgres"
+	"github.com/rachelJG/event-notification-service/internal/infrastructure/telemetry"
 	"go.uber.org/zap"
 )
 
@@ -55,9 +56,20 @@ type app struct {
 	tlsKeyFile      string
 	shutdownTimeout time.Duration
 	shutdownCh      chan struct{}
+	otelShutdown    func(context.Context) error
 }
 
 func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, error) {
+	otelShutdown, err := telemetry.Init(ctx, telemetry.Config{
+		ServiceName:    cfg.OTelServiceName,
+		ServiceVersion: Version,
+		Environment:    cfg.AppEnv,
+		OTLPEndpoint:   cfg.OTelOTLPEndpoint,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("init telemetry: %w", err)
+	}
+
 	poolCfg, err := pgxpool.ParseConfig(cfg.PGDSN)
 	if err != nil {
 		return nil, fmt.Errorf("parse pg dsn: %w", err)
@@ -75,6 +87,7 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 	prometheus.MustRegister(postgres.NewPoolStatsCollector(pool))
 
 	repo := postgres.EventRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
+
 	apiKeyRepo := postgres.APIKeyRepository{Pool: pool, QueryTimeout: cfg.DBQueryTimeout}
 
 	var eventService appports.EventService = &usecases.EventService{Repo: repo}
@@ -96,6 +109,7 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		Commit:              Commit,
 		TrustedProxies:      cfg.TrustedProxies,
 		ShutdownCh:          shutdownCh,
+		OTelServiceName:     cfg.OTelServiceName,
 	}
 
 	router := httpadapter.NewRouter(handler, adminHandler, health, apiKeyRepo, log, opts)
@@ -108,7 +122,7 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 		IdleTimeout:       cfg.IdleTimeout,
 	}
 
-	return &app{server: server, db: pool, logger: log, tlsCertFile: cfg.TLSCertFile, tlsKeyFile: cfg.TLSKeyFile, shutdownTimeout: cfg.ShutdownTimeout, shutdownCh: shutdownCh}, nil
+	return &app{server: server, db: pool, logger: log, tlsCertFile: cfg.TLSCertFile, tlsKeyFile: cfg.TLSKeyFile, shutdownTimeout: cfg.ShutdownTimeout, shutdownCh: shutdownCh, otelShutdown: otelShutdown}, nil
 }
 
 func (a *app) shutdown(ctx context.Context) error {
@@ -119,6 +133,11 @@ func (a *app) shutdown(ctx context.Context) error {
 	defer cancel()
 
 	err := a.server.Shutdown(ctx)
+	if a.otelShutdown != nil {
+		if otelErr := a.otelShutdown(ctx); otelErr != nil {
+			a.logger.Error("otel shutdown error", zap.Error(otelErr))
+		}
+	}
 	a.db.Close()
 	_ = a.logger.Sync()
 	return err
