@@ -5,7 +5,7 @@ import (
 )
 
 func TestNewNotification_Success(t *testing.T) {
-	n, err := NewNotification("event-123", ChannelEmail, "user@example.com", "Welcome", "Hello!")
+	n, err := NewNotification("event-123", ChannelEmail, "sender@test.com", "user@example.com", "Welcome", "Hello!")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -14,6 +14,9 @@ func TestNewNotification_Success(t *testing.T) {
 	}
 	if n.Channel != ChannelEmail {
 		t.Errorf("expected channel email, got %s", n.Channel)
+	}
+	if n.From != "sender@test.com" {
+		t.Errorf("expected from sender@test.com, got %s", n.From)
 	}
 	if n.Recipient != "user@example.com" {
 		t.Errorf("expected recipient user@example.com, got %s", n.Recipient)
@@ -35,8 +38,18 @@ func TestNewNotification_Success(t *testing.T) {
 	}
 }
 
+func TestNewNotification_EmptyFrom(t *testing.T) {
+	n, err := NewNotification("event-123", ChannelEmail, "", "user@example.com", "Welcome", "Hello!")
+	if err != nil {
+		t.Fatalf("expected no error with empty from, got %v", err)
+	}
+	if n.From != "" {
+		t.Errorf("expected empty from, got %s", n.From)
+	}
+}
+
 func TestNewNotification_EmptyEventID(t *testing.T) {
-	_, err := NewNotification("", ChannelEmail, "user@example.com", "Subject", "Body")
+	_, err := NewNotification("", ChannelEmail, "", "user@example.com", "Subject", "Body")
 	if err == nil {
 		t.Fatal("expected error for empty event_id")
 	}
@@ -46,7 +59,7 @@ func TestNewNotification_EmptyEventID(t *testing.T) {
 }
 
 func TestNewNotification_WhatsAppChannel(t *testing.T) {
-	n, err := NewNotification("event-123", ChannelWhatsApp, "group-xyz", "Invoice Summary", "Se cargó el recibo")
+	n, err := NewNotification("event-123", ChannelWhatsApp, "", "group-xyz", "Invoice Summary", "Se cargó el recibo")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -59,7 +72,7 @@ func TestNewNotification_WhatsAppChannel(t *testing.T) {
 }
 
 func TestNewNotification_UnsupportedChannel(t *testing.T) {
-	_, err := NewNotification("event-123", Channel("sms"), "user@example.com", "Subject", "Body")
+	_, err := NewNotification("event-123", Channel("sms"), "", "user@example.com", "Subject", "Body")
 	if err == nil {
 		t.Fatal("expected error for unsupported channel")
 	}
@@ -69,7 +82,7 @@ func TestNewNotification_UnsupportedChannel(t *testing.T) {
 }
 
 func TestNewNotification_EmptyRecipient(t *testing.T) {
-	_, err := NewNotification("event-123", ChannelEmail, "", "Subject", "Body")
+	_, err := NewNotification("event-123", ChannelEmail, "", "", "Subject", "Body")
 	if err == nil {
 		t.Fatal("expected error for empty recipient")
 	}
@@ -78,18 +91,28 @@ func TestNewNotification_EmptyRecipient(t *testing.T) {
 	}
 }
 
-func TestNewNotification_EmptySubject(t *testing.T) {
-	_, err := NewNotification("event-123", ChannelEmail, "user@example.com", "", "Body")
+func TestNewNotification_EmptySubjectEmail(t *testing.T) {
+	_, err := NewNotification("event-123", ChannelEmail, "", "user@example.com", "", "Body")
 	if err == nil {
-		t.Fatal("expected error for empty subject")
+		t.Fatal("expected error for empty subject on email channel")
 	}
-	if err.Error() != "subject is required" {
+	if err.Error() != "subject is required for email channel" {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
 
+func TestNewNotification_EmptySubjectWhatsApp(t *testing.T) {
+	n, err := NewNotification("event-123", ChannelWhatsApp, "", "group-xyz", "", "Message body")
+	if err != nil {
+		t.Fatalf("expected no error for empty subject on whatsapp, got %v", err)
+	}
+	if n.Channel != ChannelWhatsApp {
+		t.Errorf("expected channel whatsapp, got %s", n.Channel)
+	}
+}
+
 func TestNewNotification_EmptyBody(t *testing.T) {
-	_, err := NewNotification("event-123", ChannelEmail, "user@example.com", "Subject", "")
+	_, err := NewNotification("event-123", ChannelEmail, "", "user@example.com", "Subject", "")
 	if err == nil {
 		t.Fatal("expected error for empty body")
 	}

@@ -747,6 +747,54 @@ touch internal/infrastructure/postgres/migrations/004_add_index.down.sql
 
 ## 📊 Monitoring & Observability
 
+### Observability Stack
+
+The project includes a full observability stack via `docker-compose`:
+
+```bash
+docker-compose up -d
+```
+
+| Service | Port | Function |
+|---|---|---|
+| **app** | `:8080` | API server |
+| **worker** | `:9090` | Async worker (metrics on /metrics) |
+| **postgres** | `:5432` | Database |
+| **prometheus** | `:9091` | Scrapes metrics every 15s, stores in TSDB |
+| **tempo** | `:3200` / `:4318` | Receives traces via OTLP, stores them |
+| **loki** | `:3100` | Log aggregation |
+| **promtail** | — | Collects container logs, ships to Loki |
+| **grafana** | `:3000` | Dashboard for metrics, traces, and logs (admin/admin) |
+
+Data flow:
+
+```
+app/worker ──metrics──→ Prometheus (:9091)  ──→ Grafana (:3000)
+app/worker ──OTLP────→ Tempo (:4318)       ──→ Grafana
+app/worker ──stdout──→ Promtail → Loki     ──→ Grafana
+```
+
+Configuration files are in `observability/`:
+- `prometheus.yml` — scrape targets
+- `tempo.yml` — OTLP receiver and storage
+- `loki.yml` — log storage
+- `promtail.yml` — Docker log collection
+- `grafana/provisioning/datasources/` — pre-configured datasources (Prometheus, Tempo, Loki)
+
+### OpenTelemetry Tracing
+
+Distributed tracing is implemented using OpenTelemetry SDK with OTLP/HTTP export:
+
+| Env Var | Default | Description |
+|---|---|---|
+| `OTEL_SERVICE_NAME` | `event-notification-service` | Service name in traces |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP HTTP endpoint (e.g. `localhost:4318`). Empty disables export |
+
+Instrumented components:
+- **HTTP middleware** (`otelgin`) — automatic spans for every request
+- **Use cases** — `SubmitEvent`, `ProcessEvents`, `DeliverNotifications` with event/notification attributes
+- **Infrastructure** — SMTP sender, WhatsApp sender, all DB repository operations
+
 ### Prometheus Integration
 
 Both API and worker expose Prometheus metrics:

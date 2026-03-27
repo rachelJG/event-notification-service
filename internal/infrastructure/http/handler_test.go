@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/rachelJG/event-notification-service/internal/application/validation"
 	"github.com/rachelJG/event-notification-service/internal/domain/entities"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/middleware"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
@@ -28,7 +29,7 @@ type mockEventService struct {
 	getReturnErr       error
 }
 
-func (m *mockEventService) SubmitEvent(ctx context.Context, eventType string, payload []byte, idempotencyKey, clientID string) (string, error) {
+func (m *mockEventService) SubmitEvent(ctx context.Context, eventType string, payload []byte, notifications []validation.NotificationSpec, idempotencyKey, clientID string) (string, error) {
 	m.submitCalled = true
 	m.submitReceivedType = eventType
 	m.submitReceivedKey = idempotencyKey
@@ -117,7 +118,7 @@ func TestSubmitEventHandlerMissingIdempotencyKey(t *testing.T) {
 	handler := Handler{EventService: mock}
 	router := testRouter(handler, nil)
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
@@ -140,7 +141,7 @@ func TestSubmitEventHandlerInvalidIdempotencyKey(t *testing.T) {
 	handler := Handler{EventService: mock}
 	router := testRouter(handler, nil)
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "not-a-uuid")
@@ -164,7 +165,7 @@ func TestSubmitEventHandlerSuccess(t *testing.T) {
 	handler := Handler{EventService: mock}
 	router := testRouter(handler, nil)
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
@@ -198,7 +199,7 @@ func TestSubmitEventHandlerUseCaseError(t *testing.T) {
 	handler := Handler{EventService: mock}
 	router := testRouter(handler, nil)
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
@@ -218,7 +219,7 @@ func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
 	handler := Handler{EventService: mock}
 	router := testRouter(handler, nil)
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
@@ -240,7 +241,7 @@ func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	handler := Handler{EventService: mock}
 	router := testRouter(handler, nil)
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "text/plain")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
@@ -266,7 +267,7 @@ func TestSubmitEventRateLimit(t *testing.T) {
 	opts.RateLimitBurst = 1
 	router := testRouterWithOpts(handler, nil, opts)
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.RemoteAddr = "1.2.3.4:1234"
 	req.Header.Set("Content-Type", "application/json")
@@ -323,7 +324,7 @@ func TestSubmitEventHandlerLocationHeader(t *testing.T) {
 	handler := Handler{EventService: mock}
 	router := testRouter(handler, nil)
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "7c9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
@@ -557,7 +558,7 @@ func TestEventsSubmittedMetricSuccess(t *testing.T) {
 
 	before := testutil.ToFloat64(eventsSubmittedTotal.WithLabelValues("UserRegistered", "success"))
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91b")
@@ -582,7 +583,7 @@ func TestHTTPErrorsMetricIncremented(t *testing.T) {
 
 	before := testutil.ToFloat64(httpErrorsTotal.WithLabelValues("invalid_argument"))
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91d")
@@ -689,7 +690,7 @@ func TestEventsSubmittedMetricError(t *testing.T) {
 
 	before := testutil.ToFloat64(eventsSubmittedTotal.WithLabelValues("UserRegistered", "error"))
 
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1","email":"a@b.com","name":"A"}}`
+	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91c")

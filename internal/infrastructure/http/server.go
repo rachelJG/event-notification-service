@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	domainports "github.com/rachelJG/event-notification-service/internal/domain/ports"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
 )
 
@@ -21,6 +22,7 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 	router.Use(ginzap.Ginzap(logger, "", true))
 	router.Use(ginzap.RecoveryWithZap(logger, true))
 	router.Use(middleware.RequestID())
+	router.Use(otelgin.Middleware(opts.OTelServiceName))
 	router.Use(middleware.ErrorHandler(logger))
 	// Security Headers
 	router.Use(func(c *gin.Context) {

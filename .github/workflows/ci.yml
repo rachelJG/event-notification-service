@@ -42,7 +42,10 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          go test -race -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v '/cmd/')
+          # Run all unit tests; measure coverage only for packages testable without
+          # external dependencies. Postgres adapter coverage is verified by integration tests.
+          COVERPKGS=$(go list ./internal/... | grep -v '/postgres' | paste -sd ',')
+          go test -race -coverprofile=coverage.out -covermode=atomic -coverpkg="$COVERPKGS" $(go list ./... | grep -v '/cmd/')
 
       - name: Print coverage summary
         run: go tool cover -func=coverage.out

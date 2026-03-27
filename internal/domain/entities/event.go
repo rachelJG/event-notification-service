@@ -74,7 +74,7 @@ type InvoiceIssuedPayload struct {
 	Recipients      []InvoiceRecipient `json:"recipients"`
 }
 
-type InvoiceSummaryPayload struct {
+type InvoiceSummaryosePayload struct {
 	CondominiumID   string  `json:"condominium_id"`
 	CondominiumName string  `json:"condominium_name"`
 	InvoiceMonth    string  `json:"invoice_month"`
@@ -86,17 +86,18 @@ type InvoiceSummaryPayload struct {
 }
 
 type Event struct {
-	ID             string
-	Type           string
-	IdempotencyKey string
-	Payload        []byte
-	ClientID       string // Client identifier from API key metadata (optional for backward compatibility)
-	OccurredAt     time.Time
-	CreatedAt      time.Time
+	ID                string
+	Type              string
+	IdempotencyKey    string
+	Payload           []byte
+	NotificationsJSON []byte // JSON-encoded notification specs provided by the client
+	ClientID          string // Client identifier from API key metadata (optional for backward compatibility)
+	OccurredAt        time.Time
+	CreatedAt         time.Time
 }
 
 // NewEvent constructs an Event enforcing domain invariants.
-func NewEvent(eventType, idempotencyKey string, payload []byte) (Event, error) {
+func NewEvent(eventType, idempotencyKey string, payload []byte, notificationsJSON []byte) (Event, error) {
 	if strings.TrimSpace(eventType) == "" {
 		return Event{}, errors.New("event_type is required")
 	}
@@ -107,9 +108,10 @@ func NewEvent(eventType, idempotencyKey string, payload []byte) (Event, error) {
 		return Event{}, errors.New("idempotency_key is required")
 	}
 	return Event{
-		Type:           eventType,
-		IdempotencyKey: idempotencyKey,
-		Payload:        payload,
-		OccurredAt:     time.Now().UTC(),
+		Type:              eventType,
+		IdempotencyKey:    idempotencyKey,
+		Payload:           payload,
+		NotificationsJSON: notificationsJSON,
+		OccurredAt:        time.Now().UTC(),
 	}, nil
 }

@@ -68,4 +68,7 @@ type RouterOptions struct {
 	// ShutdownCh is closed when the application is shutting down.
 	// Rate limiter cleanup goroutines stop when this channel is closed.
 	ShutdownCh <-chan struct{}
+
+	// OTelServiceName is the service name used by the OpenTelemetry tracing middleware.
+	OTelServiceName string
 }

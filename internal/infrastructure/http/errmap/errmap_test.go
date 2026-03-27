@@ -22,6 +22,8 @@ func TestFromErrorMapping(t *testing.T) {
 		{"not_found", apperror.NotFound("missing", nil), http.StatusNotFound, "not_found"},
 		{"conflict", apperror.Conflict("conflict", nil), http.StatusConflict, "conflict"},
 		{"timeout", apperror.Timeout("slow", nil), http.StatusGatewayTimeout, "timeout"},
+		{"canceled_apperror", apperror.Canceled("aborted", nil), StatusClientClosedRequest, "canceled"},
+		{"unavailable", apperror.Unavailable("down", nil), http.StatusServiceUnavailable, "unavailable"},
 		{"rate_limited", apperror.New(apperror.CodeRateLimited, "slow down", nil), http.StatusTooManyRequests, "rate_limited"},
 		{"deadline", context.DeadlineExceeded, http.StatusGatewayTimeout, "timeout"},
 		{"canceled", context.Canceled, StatusClientClosedRequest, "canceled"},

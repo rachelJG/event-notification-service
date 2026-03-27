@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	appports "github.com/rachelJG/event-notification-service/internal/application/ports"
+	"github.com/rachelJG/event-notification-service/internal/application/validation"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/dto"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/errmap"
 	apperror "github.com/rachelJG/event-notification-service/internal/pkg/apperror"
@@ -34,7 +35,18 @@ func (h Handler) SubmitEventHandler(c *gin.Context) {
 
 	clientID := c.GetString("client_id")
 
-	id, err := h.EventService.SubmitEvent(c.Request.Context(), req.EventType, req.Payload, c.GetHeader(idempotencyHeader), clientID)
+	notifications := make([]validation.NotificationSpec, len(req.Notifications))
+	for i, n := range req.Notifications {
+		notifications[i] = validation.NotificationSpec{
+			Channel:    n.Channel,
+			From:       n.From,
+			Subject:    n.Subject,
+			Body:       n.Body,
+			Recipients: n.Recipients,
+		}
+	}
+
+	id, err := h.EventService.SubmitEvent(c.Request.Context(), req.EventType, req.Payload, notifications, c.GetHeader(idempotencyHeader), clientID)
 	if err != nil {
 		recordEventSubmitted(req.EventType, "error")
 		httpErr := errmap.FromError(err)

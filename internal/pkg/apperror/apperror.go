@@ -11,6 +11,8 @@ const (
 	CodeNotFound         Code = "not_found"
 	CodeConflict         Code = "conflict"
 	CodeTimeout          Code = "timeout"
+	CodeCanceled         Code = "canceled"
+	CodeUnavailable      Code = "unavailable"
 	CodeRateLimited      Code = "rate_limited"
 	CodeInternal         Code = "internal"
 )
@@ -58,6 +60,14 @@ func Conflict(message string, err error) *AppError {
 
 func Timeout(message string, err error) *AppError {
 	return New(CodeTimeout, message, err)
+}
+
+func Canceled(message string, err error) *AppError {
+	return New(CodeCanceled, message, err)
+}
+
+func Unavailable(message string, err error) *AppError {
+	return New(CodeUnavailable, message, err)
 }
 
 func Internal(message string, err error) *AppError {

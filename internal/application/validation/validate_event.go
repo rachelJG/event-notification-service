@@ -2,120 +2,82 @@ package validation
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/rachelJG/event-notification-service/internal/domain/entities"
+	"github.com/rachelJG/event-notification-service/internal/pkg/apperror"
 )
 
-func ValidateEvent(eventType string, payload []byte) error {
-	switch eventType {
-	case entities.EventTypeUserRegistered:
-		var body entities.UserRegisteredPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid UserRegistered payload")
-		}
-		if strings.TrimSpace(body.UserID) == "" || strings.TrimSpace(body.Email) == "" || strings.TrimSpace(body.Name) == "" {
-			return errors.New("UserRegistered requires user_id, email, and name")
-		}
-		if !strings.Contains(body.Email, "@") {
-			return errors.New("UserRegistered requires a valid email")
-		}
-		return nil
-	case entities.EventTypePasswordResetRequested:
-		var body entities.PasswordResetRequestedPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid PasswordResetRequested payload")
-		}
-		if strings.TrimSpace(body.UserID) == "" || strings.TrimSpace(body.Email) == "" {
-			return errors.New("PasswordResetRequested requires user_id and email")
-		}
-		if !strings.Contains(body.Email, "@") {
-			return errors.New("PasswordResetRequested requires a valid email")
-		}
-		return nil
-	case entities.EventTypeOrderPaid:
-		var body entities.OrderPaidPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid OrderPaid payload")
-		}
-		if strings.TrimSpace(body.OrderID) == "" || strings.TrimSpace(body.UserID) == "" || strings.TrimSpace(body.Currency) == "" {
-			return errors.New("OrderPaid requires order_id, user_id, and currency")
-		}
-		if body.Amount <= 0 {
-			return errors.New("OrderPaid requires amount > 0")
-		}
-		return nil
-	case entities.EventTypeOrderShipped:
-		var body entities.OrderShippedPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid OrderShipped payload")
-		}
-		if strings.TrimSpace(body.OrderID) == "" || strings.TrimSpace(body.UserID) == "" || strings.TrimSpace(body.Carrier) == "" || strings.TrimSpace(body.TrackingNumber) == "" {
-			return errors.New("OrderShipped requires order_id, user_id, carrier, and tracking_number")
-		}
-		return nil
-	case entities.EventTypeInvoiceIssued:
-		var body entities.InvoiceIssuedPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid InvoiceIssued payload")
-		}
-		if strings.TrimSpace(body.CondominiumID) == "" || strings.TrimSpace(body.CondominiumName) == "" {
-			return errors.New("InvoiceIssued requires condominium_id and condominium_name")
-		}
-		if strings.TrimSpace(body.InvoiceMonth) == "" || strings.TrimSpace(body.DueDate) == "" {
-			return errors.New("InvoiceIssued requires invoice_month and due_date")
-		}
-		if strings.TrimSpace(body.Currency) == "" {
-			return errors.New("InvoiceIssued requires currency")
-		}
-		if len(body.Recipients) == 0 {
-			return errors.New("InvoiceIssued requires at least one recipient")
-		}
-		if len(body.Recipients) > 500 {
-			return errors.New("InvoiceIssued recipients exceeds maximum of 500")
-		}
-		for i, r := range body.Recipients {
-			if strings.TrimSpace(r.Email) == "" || strings.TrimSpace(r.Name) == "" || strings.TrimSpace(r.UnitCode) == "" {
-				return fmt.Errorf("InvoiceIssued recipient[%d] requires email, name, and unit_code", i)
-			}
-			if !strings.Contains(r.Email, "@") {
-				return fmt.Errorf("InvoiceIssued recipient[%d] has invalid email", i)
-			}
-			if r.Amount <= 0 {
-				return fmt.Errorf("InvoiceIssued recipient[%d] requires amount > 0", i)
-			}
-		}
-		return nil
-	case entities.EventTypeInvoiceSummary:
-		var body entities.InvoiceSummaryPayload
-		if err := json.Unmarshal(payload, &body); err != nil {
-			return errors.New("invalid InvoiceSummary payload")
-		}
-		if strings.TrimSpace(body.CondominiumID) == "" || strings.TrimSpace(body.CondominiumName) == "" {
-			return errors.New("InvoiceSummary requires condominium_id and condominium_name")
-		}
-		if strings.TrimSpace(body.InvoiceMonth) == "" {
-			return errors.New("InvoiceSummary requires invoice_month")
-		}
-		if body.TotalUnits <= 0 {
-			return errors.New("InvoiceSummary requires total_units > 0")
-		}
-		if body.TotalAmount <= 0 {
-			return errors.New("InvoiceSummary requires total_amount > 0")
-		}
-		if strings.TrimSpace(body.Currency) == "" {
-			return errors.New("InvoiceSummary requires currency")
-		}
-		if strings.TrimSpace(body.WhatsAppGroupID) == "" {
-			return errors.New("InvoiceSummary requires whatsapp_group_id")
-		}
-		if strings.TrimSpace(body.Message) == "" {
-			return errors.New("InvoiceSummary requires message")
-		}
-		return nil
-	default:
-		return errors.New("unsupported event_type")
+// NotificationSpec represents a client-provided notification instruction.
+type NotificationSpec struct {
+	Channel    string   `json:"channel"`
+	From       string   `json:"from,omitempty"`
+	Subject    string   `json:"subject"`
+	Body       string   `json:"body"`
+	Recipients []string `json:"recipients"`
+}
+
+const maxRecipientsPerNotification = 500
+
+// ValidateEvent validates the event payload and notification specs.
+// The event type is validated by the domain layer (NewEvent); this function
+// validates the notification instructions provided by the client.
+func ValidateEvent(eventType string, payload []byte, notifications []NotificationSpec) error {
+	if len(payload) > 0 && !json.Valid(payload) {
+		return apperror.InvalidArgument("invalid JSON payload", nil)
 	}
+
+	if len(notifications) == 0 {
+		return apperror.InvalidArgument("at least one notification is required", nil)
+	}
+
+	for i, n := range notifications {
+		if err := validateNotificationSpec(i, n); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateNotificationSpec(index int, n NotificationSpec) error {
+	channel := strings.TrimSpace(n.Channel)
+	if channel != "email" && channel != "whatsapp" {
+		return apperror.InvalidArgument(fmt.Sprintf("notifications[%d]: unsupported channel %q", index, n.Channel), nil)
+	}
+
+	if len(n.Recipients) == 0 {
+		return apperror.InvalidArgument(fmt.Sprintf("notifications[%d]: at least one recipient is required", index), nil)
+	}
+	if len(n.Recipients) > maxRecipientsPerNotification {
+		return apperror.InvalidArgument(fmt.Sprintf("notifications[%d]: recipients exceeds maximum of %d", index, maxRecipientsPerNotification), nil)
+	}
+
+	if strings.TrimSpace(n.Body) == "" {
+		return apperror.InvalidArgument(fmt.Sprintf("notifications[%d]: body is required", index), nil)
+	}
+
+	if channel == "email" {
+		if strings.TrimSpace(n.Subject) == "" {
+			return apperror.InvalidArgument(fmt.Sprintf("notifications[%d]: subject is required for email channel", index), nil)
+		}
+		if n.From != "" && !strings.Contains(n.From, "@") {
+			return apperror.InvalidArgument(fmt.Sprintf("notifications[%d]: invalid from email address", index), nil)
+		}
+		for j, r := range n.Recipients {
+			if !strings.Contains(r, "@") {
+				return apperror.InvalidArgument(fmt.Sprintf("notifications[%d].recipients[%d]: invalid email address", index, j), nil)
+			}
+		}
+	}
+
+	if channel == "whatsapp" {
+		for j, r := range n.Recipients {
+			if strings.TrimSpace(r) == "" {
+				return apperror.InvalidArgument(fmt.Sprintf("notifications[%d].recipients[%d]: empty group ID", index, j), nil)
+			}
+		}
+	}
+
+	return nil
 }

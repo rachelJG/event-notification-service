@@ -32,14 +32,14 @@ func (s *fakeWhatsAppSender) SendToGroup(_ context.Context, groupID, message str
 }
 
 type sentEmail struct {
-	To, Subject, Body string
+	From, To, Subject, Body string
 }
 
-func (s *fakeSender) Send(_ context.Context, to, subject, body string) error {
+func (s *fakeSender) Send(_ context.Context, from, to, subject, body string) error {
 	if s.err != nil {
 		return s.err
 	}
-	s.sent = append(s.sent, sentEmail{To: to, Subject: subject, Body: body})
+	s.sent = append(s.sent, sentEmail{From: from, To: to, Subject: subject, Body: body})
 	return nil
 }
 
@@ -223,6 +223,27 @@ func TestDeliverNotificationsWhatsAppNotConfigured(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected 0 delivered, got %d", count)
+	}
+}
+
+func TestDeliverNotificationsUnsupportedChannel(t *testing.T) {
+	notifRepo := &fakeNotificationRepo{
+		pending: []entities.Notification{
+			{ID: "n1", EventID: "e1", Channel: entities.Channel("sms"), Recipient: "+123", Subject: "", Body: "Hello", Attempts: 0, MaxAttempts: 5},
+		},
+	}
+
+	uc := DeliverNotifications{NotificationRepo: notifRepo, Sender: &fakeSender{}, BatchSize: 10}
+	count, err := uc.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error (soft failure), got %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 delivered, got %d", count)
+	}
+	lastUpdate := notifRepo.updates[len(notifRepo.updates)-1]
+	if lastUpdate.Update.Status != entities.NotificationStatusPending {
+		t.Errorf("expected status pending after retry, got %s", lastUpdate.Update.Status)
 	}
 }
 
