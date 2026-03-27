@@ -257,6 +257,235 @@ func TestSendFromOverride(t *testing.T) {
 	}
 }
 
+// fakeSMTPServerWithAuth speaks enough SMTP to exercise the AUTH path.
+func fakeSMTPServerWithAuth(t *testing.T, ln net.Listener) {
+	t.Helper()
+
+	conn, err := ln.Accept()
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	scanner := bufio.NewScanner(conn)
+	write := func(s string) { fmt.Fprintf(conn, "%s\r\n", s) }
+
+	write("220 localhost ESMTP fakeSMTP")
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		verb := strings.ToUpper(strings.SplitN(line, " ", 2)[0])
+
+		switch verb {
+		case "EHLO", "HELO":
+			write("250-localhost")
+			write("250-AUTH PLAIN LOGIN")
+			write("250 OK")
+		case "AUTH":
+			write("235 Authentication successful")
+		case "MAIL":
+			write("250 OK")
+		case "RCPT":
+			write("250 OK")
+		case "DATA":
+			write("354 Start mail input")
+			for scanner.Scan() {
+				if scanner.Text() == "." {
+					break
+				}
+			}
+			write("250 OK")
+		case "QUIT":
+			write("221 Bye")
+			return
+		default:
+			write("500 Unknown command")
+		}
+	}
+}
+
+func TestDialAndSendWithAuth(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	go fakeSMTPServerWithAuth(t, ln)
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	s := NewSMTPSender("127.0.0.1", port, "user@test.com", "secret", "from@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := s.Send(ctx, "", "to@test.com", "Subject", "Body"); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+}
+
+// fakeSMTPServerRejectMAIL rejects the MAIL FROM command.
+func fakeSMTPServerRejectMAIL(t *testing.T, ln net.Listener) {
+	t.Helper()
+	conn, err := ln.Accept()
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	scanner := bufio.NewScanner(conn)
+	write := func(s string) { fmt.Fprintf(conn, "%s\r\n", s) }
+
+	write("220 localhost ESMTP fakeSMTP")
+	for scanner.Scan() {
+		line := scanner.Text()
+		verb := strings.ToUpper(strings.SplitN(line, " ", 2)[0])
+		switch verb {
+		case "EHLO", "HELO":
+			write("250-localhost")
+			write("250 OK")
+		case "MAIL":
+			write("550 Sender rejected")
+		case "QUIT":
+			write("221 Bye")
+			return
+		default:
+			write("500 Unknown command")
+		}
+	}
+}
+
+func TestDialAndSendMailRejected(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	go fakeSMTPServerRejectMAIL(t, ln)
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	s := NewSMTPSender("127.0.0.1", port, "", "", "from@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = s.Send(ctx, "", "to@test.com", "Subject", "Body")
+	if err == nil {
+		t.Fatal("expected error for rejected MAIL FROM")
+	}
+}
+
+// fakeSMTPServerRejectRCPT accepts MAIL but rejects RCPT.
+func fakeSMTPServerRejectRCPT(t *testing.T, ln net.Listener) {
+	t.Helper()
+	conn, err := ln.Accept()
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	scanner := bufio.NewScanner(conn)
+	write := func(s string) { fmt.Fprintf(conn, "%s\r\n", s) }
+
+	write("220 localhost ESMTP fakeSMTP")
+	for scanner.Scan() {
+		line := scanner.Text()
+		verb := strings.ToUpper(strings.SplitN(line, " ", 2)[0])
+		switch verb {
+		case "EHLO", "HELO":
+			write("250-localhost")
+			write("250 OK")
+		case "MAIL":
+			write("250 OK")
+		case "RCPT":
+			write("550 Recipient rejected")
+		case "QUIT":
+			write("221 Bye")
+			return
+		default:
+			write("500 Unknown command")
+		}
+	}
+}
+
+func TestDialAndSendRcptRejected(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	go fakeSMTPServerRejectRCPT(t, ln)
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	s := NewSMTPSender("127.0.0.1", port, "", "", "from@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = s.Send(ctx, "", "to@test.com", "Subject", "Body")
+	if err == nil {
+		t.Fatal("expected error for rejected RCPT TO")
+	}
+}
+
+// fakeSMTPServerRejectDATA accepts MAIL and RCPT but rejects DATA.
+func fakeSMTPServerRejectDATA(t *testing.T, ln net.Listener) {
+	t.Helper()
+	conn, err := ln.Accept()
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	scanner := bufio.NewScanner(conn)
+	write := func(s string) { fmt.Fprintf(conn, "%s\r\n", s) }
+
+	write("220 localhost ESMTP fakeSMTP")
+	for scanner.Scan() {
+		line := scanner.Text()
+		verb := strings.ToUpper(strings.SplitN(line, " ", 2)[0])
+		switch verb {
+		case "EHLO", "HELO":
+			write("250-localhost")
+			write("250 OK")
+		case "MAIL":
+			write("250 OK")
+		case "RCPT":
+			write("250 OK")
+		case "DATA":
+			write("554 Transaction failed")
+		case "QUIT":
+			write("221 Bye")
+			return
+		default:
+			write("500 Unknown command")
+		}
+	}
+}
+
+func TestDialAndSendDataRejected(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer ln.Close()
+
+	go fakeSMTPServerRejectDATA(t, ln)
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	s := NewSMTPSender("127.0.0.1", port, "", "", "from@test.com")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = s.Send(ctx, "", "to@test.com", "Subject", "Body")
+	if err == nil {
+		t.Fatal("expected error for rejected DATA")
+	}
+}
+
 func TestSendFromFallbackToDefault(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

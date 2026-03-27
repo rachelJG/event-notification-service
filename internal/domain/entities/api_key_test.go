@@ -25,3 +25,25 @@ func TestHasScope(t *testing.T) {
 		})
 	}
 }
+
+func TestClientID(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata map[string]string
+		want     string
+	}{
+		{"with client_id", map[string]string{"client_id": "acme-corp"}, "acme-corp"},
+		{"nil metadata", nil, ""},
+		{"empty metadata", map[string]string{}, ""},
+		{"no client_id key", map[string]string{"org": "acme"}, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := APIKey{Metadata: tt.metadata}
+			if got := key.ClientID(); got != tt.want {
+				t.Errorf("ClientID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

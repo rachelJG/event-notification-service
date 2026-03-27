@@ -122,6 +122,31 @@ func TestNewEvent_AllValidTypesAccepted(t *testing.T) {
 	}
 }
 
+func TestNewEvent_NotificationsJSONStored(t *testing.T) {
+	t.Parallel()
+
+	notifs := []byte(`[{"channel":"email","recipients":["a@b.com"]}]`)
+	event, err := NewEvent(EventTypeUserRegistered, "idem-key", []byte(`{}`), notifs)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if string(event.NotificationsJSON) != string(notifs) {
+		t.Errorf("expected NotificationsJSON %s, got %s", notifs, event.NotificationsJSON)
+	}
+}
+
+func TestNewEvent_NilNotificationsJSON(t *testing.T) {
+	t.Parallel()
+
+	event, err := NewEvent(EventTypeUserRegistered, "idem-key", []byte(`{}`), nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if event.NotificationsJSON != nil {
+		t.Errorf("expected nil NotificationsJSON, got %v", event.NotificationsJSON)
+	}
+}
+
 func TestValidEventTypes(t *testing.T) {
 	t.Parallel()
 
