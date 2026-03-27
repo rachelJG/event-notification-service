@@ -59,6 +59,24 @@ func TestSendToGroupAPIError(t *testing.T) {
 	}
 }
 
+func TestSendToGroupInvalidURL(t *testing.T) {
+	t.Parallel()
+	s := NewSender("://invalid-url", "token")
+	err := s.SendToGroup(context.Background(), "group-123", "Hello")
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+}
+
+func TestSendToGroupConnectionRefused(t *testing.T) {
+	t.Parallel()
+	s := NewSender("http://127.0.0.1:1", "token")
+	err := s.SendToGroup(context.Background(), "group-123", "Hello")
+	if err == nil {
+		t.Fatal("expected error for connection refused")
+	}
+}
+
 func TestSendToGroupContextCanceled(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())

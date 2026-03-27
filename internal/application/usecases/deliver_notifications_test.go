@@ -226,6 +226,27 @@ func TestDeliverNotificationsWhatsAppNotConfigured(t *testing.T) {
 	}
 }
 
+func TestDeliverNotificationsUnsupportedChannel(t *testing.T) {
+	notifRepo := &fakeNotificationRepo{
+		pending: []entities.Notification{
+			{ID: "n1", EventID: "e1", Channel: entities.Channel("sms"), Recipient: "+123", Subject: "", Body: "Hello", Attempts: 0, MaxAttempts: 5},
+		},
+	}
+
+	uc := DeliverNotifications{NotificationRepo: notifRepo, Sender: &fakeSender{}, BatchSize: 10}
+	count, err := uc.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error (soft failure), got %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 delivered, got %d", count)
+	}
+	lastUpdate := notifRepo.updates[len(notifRepo.updates)-1]
+	if lastUpdate.Update.Status != entities.NotificationStatusPending {
+		t.Errorf("expected status pending after retry, got %s", lastUpdate.Update.Status)
+	}
+}
+
 func TestRetryDelay(t *testing.T) {
 	if d := retryDelay(0); d != 1*time.Second {
 		t.Errorf("expected 1s for attempt 0, got %v", d)

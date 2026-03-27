@@ -39,6 +39,8 @@ func TestConstructors(t *testing.T) {
 		{"NotFound", NotFound, CodeNotFound},
 		{"Conflict", Conflict, CodeConflict},
 		{"Timeout", Timeout, CodeTimeout},
+		{"Canceled", Canceled, CodeCanceled},
+		{"Unavailable", Unavailable, CodeUnavailable},
 		{"Internal", Internal, CodeInternal},
 	}
 	for _, tc := range cases {
