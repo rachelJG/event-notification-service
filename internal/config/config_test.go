@@ -19,12 +19,6 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.MaxBodyBytes != 1<<20 {
 		t.Errorf("MaxBodyBytes = %d, want %d", cfg.MaxBodyBytes, 1<<20)
 	}
-	if cfg.RateLimitRPS != 10 {
-		t.Errorf("RateLimitRPS = %f, want %f", cfg.RateLimitRPS, 10.0)
-	}
-	if cfg.RateLimitBurst != 20 {
-		t.Errorf("RateLimitBurst = %d, want %d", cfg.RateLimitBurst, 20)
-	}
 	if cfg.ReadHeaderTimeout != 5*time.Second {
 		t.Errorf("ReadHeaderTimeout = %v, want %v", cfg.ReadHeaderTimeout, 5*time.Second)
 	}
@@ -57,8 +51,6 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("MAX_BODY_BYTES", "2048")
-	t.Setenv("RATE_LIMIT_RPS", "5.5")
-	t.Setenv("RATE_LIMIT_BURST", "10")
 	t.Setenv("READ_HEADER_TIMEOUT", "10")
 	t.Setenv("DB_QUERY_TIMEOUT", "3")
 	t.Setenv("DB_POOL_MAX_CONNS", "20")
@@ -83,12 +75,6 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.MaxBodyBytes != 2048 {
 		t.Errorf("MaxBodyBytes = %d, want %d", cfg.MaxBodyBytes, 2048)
-	}
-	if cfg.RateLimitRPS != 5.5 {
-		t.Errorf("RateLimitRPS = %f, want %f", cfg.RateLimitRPS, 5.5)
-	}
-	if cfg.RateLimitBurst != 10 {
-		t.Errorf("RateLimitBurst = %d, want %d", cfg.RateLimitBurst, 10)
 	}
 	if cfg.ReadHeaderTimeout != 10*time.Second {
 		t.Errorf("ReadHeaderTimeout = %v, want %v", cfg.ReadHeaderTimeout, 10*time.Second)
@@ -136,8 +122,6 @@ func TestLoadFromEnv(t *testing.T) {
 
 func TestLoadInvalidEnvFallsBackToDefaults(t *testing.T) {
 	t.Setenv("MAX_BODY_BYTES", "not-a-number")
-	t.Setenv("RATE_LIMIT_RPS", "not-a-float")
-	t.Setenv("RATE_LIMIT_BURST", "xyz")
 	t.Setenv("DB_POOL_MAX_CONNS", "abc")
 	t.Setenv("DB_POOL_MIN_CONNS", "abc")
 	t.Setenv("DB_QUERY_TIMEOUT", "abc")
@@ -145,12 +129,6 @@ func TestLoadInvalidEnvFallsBackToDefaults(t *testing.T) {
 	cfg := Load()
 	if cfg.MaxBodyBytes != 1<<20 {
 		t.Errorf("MaxBodyBytes should fall back to default, got %d", cfg.MaxBodyBytes)
-	}
-	if cfg.RateLimitRPS != 10 {
-		t.Errorf("RateLimitRPS should fall back to default, got %f", cfg.RateLimitRPS)
-	}
-	if cfg.RateLimitBurst != 20 {
-		t.Errorf("RateLimitBurst should fall back to default, got %d", cfg.RateLimitBurst)
 	}
 	if cfg.DBPoolMaxConns != 10 {
 		t.Errorf("DBPoolMaxConns should fall back to default, got %d", cfg.DBPoolMaxConns)
@@ -163,8 +141,6 @@ func TestValidateValidDevConfig(t *testing.T) {
 	cfg := Config{
 		AppEnv:              "development",
 		CORSAllowAllOrigins: true,
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
 		DBQueryTimeout:      5 * time.Second,
 	}
@@ -178,8 +154,6 @@ func TestValidateProductionRequiresSMTPHostFromValidate(t *testing.T) {
 		AppEnv:              "production",
 		CORSAllowAllOrigins: false,
 		CORSAllowedOrigins:  []string{"https://example.com"},
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
 		DBQueryTimeout:      5 * time.Second,
 	}
@@ -194,8 +168,6 @@ func TestValidateTLSRequiresBothFiles(t *testing.T) {
 		AppEnv:              "development",
 		TLSCertFile:         "/path/cert.pem",
 		CORSAllowAllOrigins: true,
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
 		DBQueryTimeout:      5 * time.Second,
 	}
@@ -210,8 +182,6 @@ func TestValidateCORSConflict(t *testing.T) {
 		AppEnv:              "development",
 		CORSAllowAllOrigins: true,
 		CORSAllowedOrigins:  []string{"https://example.com"},
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
 		DBQueryTimeout:      5 * time.Second,
 	}
@@ -225,8 +195,6 @@ func TestValidateCORSRequiresOrigins(t *testing.T) {
 	cfg := Config{
 		AppEnv:              "development",
 		CORSAllowAllOrigins: false,
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
 		DBQueryTimeout:      5 * time.Second,
 	}
@@ -242,8 +210,6 @@ func TestValidateHSTSMaxAge(t *testing.T) {
 		CORSAllowAllOrigins: true,
 		EnableHSTS:          true,
 		HSTSMaxAgeSeconds:   0,
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
 		DBQueryTimeout:      5 * time.Second,
 	}
@@ -253,42 +219,10 @@ func TestValidateHSTSMaxAge(t *testing.T) {
 	}
 }
 
-func TestValidateRateLimitRPSPositive(t *testing.T) {
-	cfg := Config{
-		AppEnv:              "development",
-		CORSAllowAllOrigins: true,
-		RateLimitRPS:        0,
-		RateLimitBurst:      20,
-		MaxBodyBytes:        1 << 20,
-		DBQueryTimeout:      5 * time.Second,
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected error for RateLimitRPS <= 0")
-	}
-}
-
-func TestValidateRateLimitBurstPositive(t *testing.T) {
-	cfg := Config{
-		AppEnv:              "development",
-		CORSAllowAllOrigins: true,
-		RateLimitRPS:        10,
-		RateLimitBurst:      0,
-		MaxBodyBytes:        1 << 20,
-		DBQueryTimeout:      5 * time.Second,
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected error for RateLimitBurst <= 0")
-	}
-}
-
 func TestValidateMaxBodyBytesPositive(t *testing.T) {
 	cfg := Config{
 		AppEnv:              "development",
 		CORSAllowAllOrigins: true,
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        0,
 		DBQueryTimeout:      5 * time.Second,
 	}
@@ -302,8 +236,6 @@ func TestValidateDBQueryTimeoutPositive(t *testing.T) {
 	cfg := Config{
 		AppEnv:              "development",
 		CORSAllowAllOrigins: true,
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
 		DBQueryTimeout:      0,
 	}
@@ -318,8 +250,6 @@ func TestValidateProductionSMTPHostRequired(t *testing.T) {
 		AppEnv:              "production",
 		CORSAllowAllOrigins: false,
 		CORSAllowedOrigins:  []string{"https://example.com"},
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
 		DBQueryTimeout:      5 * time.Second,
 	}
@@ -333,8 +263,6 @@ func TestValidateSMTPHostRequiresSMTPFrom(t *testing.T) {
 	cfg := Config{
 		AppEnv:              "development",
 		CORSAllowAllOrigins: true,
-		RateLimitRPS:        10,
-		RateLimitBurst:      20,
 		MaxBodyBytes:        1 << 20,
 		DBQueryTimeout:      5 * time.Second,
 		SMTPHost:            "smtp.example.com",

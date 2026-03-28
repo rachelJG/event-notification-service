@@ -29,10 +29,6 @@ type Config struct {
 
 	// MaxBodyBytes is the maximum size of HTTP request body in bytes (default: 1MB)
 	MaxBodyBytes int64
-	// RateLimitRPS defines the maximum requests per second (default: 10)
-	RateLimitRPS float64
-	// RateLimitBurst is the maximum burst of requests (default: 20)
-	RateLimitBurst int
 	// ReadHeaderTimeout is the maximum duration for reading request headers (default: 5s)
 	ReadHeaderTimeout time.Duration
 	// ReadTimeout is the maximum duration for reading the entire request (default: 15s)
@@ -135,8 +131,6 @@ func Load() Config {
 		TLSKeyFile:  os.Getenv("TLS_KEY_FILE"),
 
 		MaxBodyBytes:      getenvInt64Default("MAX_BODY_BYTES", 1<<20),
-		RateLimitRPS:      getenvFloatDefault("RATE_LIMIT_RPS", 10),
-		RateLimitBurst:    getenvIntDefault("RATE_LIMIT_BURST", 20),
 		ReadHeaderTimeout: getenvDurationSecondsDefault("READ_HEADER_TIMEOUT", 5),
 		ReadTimeout:       getenvDurationSecondsDefault("READ_TIMEOUT", 15),
 		WriteTimeout:      getenvDurationSecondsDefault("WRITE_TIMEOUT", 15),
@@ -194,12 +188,6 @@ func (c Config) Validate() error {
 	if c.EnableHSTS && c.HSTSMaxAgeSeconds <= 0 {
 		return fmt.Errorf("invalid HSTS config: HSTS_MAX_AGE_SECONDS must be > 0")
 	}
-	if c.RateLimitRPS <= 0 {
-		return fmt.Errorf("invalid rate limit config: RATE_LIMIT_RPS must be > 0")
-	}
-	if c.RateLimitBurst <= 0 {
-		return fmt.Errorf("invalid rate limit config: RATE_LIMIT_BURST must be > 0")
-	}
 	if c.MaxBodyBytes <= 0 {
 		return fmt.Errorf("invalid body limit config: MAX_BODY_BYTES must be > 0")
 	}
@@ -253,18 +241,6 @@ func getenvInt64Default(key string, fallback int64) int64 {
 		return fallback
 	}
 	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return fallback
-	}
-	return parsed
-}
-
-func getenvFloatDefault(key string, fallback float64) float64 {
-	value := os.Getenv(key)
-	if value == "" {
-		return fallback
-	}
-	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return fallback
 	}

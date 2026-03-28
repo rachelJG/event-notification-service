@@ -12,8 +12,6 @@ services:
       - APP_ENV=development
       - JWT_SECRET=change-me-dev-secret-at-least-32-bytes!
       - MAX_BODY_BYTES=1048576
-      - RATE_LIMIT_RPS=10
-      - RATE_LIMIT_BURST=20
       - READ_HEADER_TIMEOUT=5
       - READ_TIMEOUT=15
       - WRITE_TIMEOUT=15

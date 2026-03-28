@@ -98,8 +98,6 @@ func newApp(ctx context.Context, cfg config.Config, log *zap.Logger) (*app, erro
 	health := pgHealthChecker{pool: pool}
 	opts := httpadapter.RouterOptions{
 		MaxBodyBytes:        cfg.MaxBodyBytes,
-		RateLimitRPS:        cfg.RateLimitRPS,
-		RateLimitBurst:      cfg.RateLimitBurst,
 		CORSAllowAllOrigins: cfg.CORSAllowAllOrigins,
 		CORSAllowedOrigins:  cfg.CORSAllowedOrigins,
 		CORSAllowedHeaders:  cfg.CORSAllowedHeaders,

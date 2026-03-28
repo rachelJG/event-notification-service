@@ -23,13 +23,6 @@ type RouterOptions struct {
 	// Enforced by the body limit middleware to prevent excessive memory usage from large payloads.
 	MaxBodyBytes int64
 
-	// RateLimitRPS is the rate limit in requests per second (RPS).
-	// Determines how many requests a client can make per second using a token bucket algorithm.
-	RateLimitRPS float64
-
-	// RateLimitBurst is the rate limit burst size.
-	// Allows clients to temporarily exceed the RPS limit by this amount, enabling short bursts of traffic.
-	RateLimitBurst int
 
 	// CORSAllowAllOrigins when true, allows CORS requests from all origins (Access-Control-Allow-Origin: *).
 	// Cannot be combined with CORSAllowedOrigins.
@@ -66,7 +59,7 @@ type RouterOptions struct {
 	TrustedProxies []string
 
 	// ShutdownCh is closed when the application is shutting down.
-	// Rate limiter cleanup goroutines stop when this channel is closed.
+	// Used by background goroutines to know when to stop.
 	ShutdownCh <-chan struct{}
 
 	// OTelServiceName is the service name used by the OpenTelemetry tracing middleware.

@@ -258,41 +258,6 @@ func TestSubmitEventRejectsNonJSONContentType(t *testing.T) {
 	}
 }
 
-func TestSubmitEventRateLimit(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	mock := &mockEventService{submitReturnID: "evt-1"}
-	handler := Handler{EventService: mock}
-	opts := testRouterOptions()
-	opts.RateLimitRPS = 1
-	opts.RateLimitBurst = 1
-	router := testRouterWithOpts(handler, nil, opts)
-
-	reqBody := `{"event_type":"UserRegistered","payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
-	req.RemoteAddr = "1.2.3.4:1234"
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
-	req.Header.Set("X-API-Key", testRawAPIKey)
-	resp := httptest.NewRecorder()
-
-	router.ServeHTTP(resp, req)
-	if resp.Code != http.StatusAccepted {
-		t.Fatalf("expected first request 202, got %d", resp.Code)
-	}
-
-	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
-	req2.RemoteAddr = "1.2.3.4:1234"
-	req2.Header.Set("Content-Type", "application/json")
-	req2.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
-	req2.Header.Set("X-API-Key", testRawAPIKey)
-	resp2 := httptest.NewRecorder()
-
-	router.ServeHTTP(resp2, req2)
-	if resp2.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected second request 429, got %d", resp2.Code)
-	}
-}
-
 func assertErrorCode(t *testing.T, resp *httptest.ResponseRecorder, wantCode string) {
 	t.Helper()
 	var body map[string]string
@@ -310,8 +275,6 @@ func assertErrorCode(t *testing.T, resp *httptest.ResponseRecorder, wantCode str
 func testRouterOptions() RouterOptions {
 	return RouterOptions{
 		MaxBodyBytes:        1 << 20,
-		RateLimitRPS:        1000,
-		RateLimitBurst:      1000,
 		CORSAllowAllOrigins: true,
 		CORSAllowedHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Idempotency-Key", "X-API-Key"},
 		ShutdownCh:          make(chan struct{}),
@@ -535,19 +498,6 @@ func TestNewRouterDefaultBodyLimit(t *testing.T) {
 	}
 }
 
-func TestNewRouterDefaultRateLimit(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	opts := testRouterOptions()
-	opts.RateLimitRPS = 0   // triggers default fallback
-	opts.RateLimitBurst = 0 // triggers default fallback
-	router := testRouterWithOpts(Handler{EventService: &mockEventService{}}, nil, opts)
-	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-}
 
 
 func TestEventsSubmittedMetricSuccess(t *testing.T) {

@@ -53,18 +53,9 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 	router.Use(middleware.BodyLimit(bodyLimit))
 	router.Use(middleware.RequireJSONContentType())
 
-	rps := opts.RateLimitRPS
-	if rps <= 0 {
-		rps = 10
-	}
-	burst := opts.RateLimitBurst
-	if burst <= 0 {
-		burst = 20
-	}
-
-	// Unauthenticated endpoints — IP-based rate limiting as DDoS protection.
+	// Unauthenticated endpoints (health, metrics).
+	// Rate limiting should be handled at the load balancer / API gateway level.
 	publicGroup := router.Group("/")
-	publicGroup.Use(middleware.RateLimit(rps, burst, opts.ShutdownCh))
 
 	// Liveness: only checks that the process is running — no external I/O.
 	// Used by Kubernetes livenessProbe; a failure here triggers a pod restart.
@@ -99,7 +90,7 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 	})
 	publicGroup.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
-	// Authenticated event routes — API key auth + API-key-based rate limiting.
+	// Authenticated event routes.
 	v1 := router.Group("/api/v1")
 	v1.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
@@ -116,11 +107,10 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 		RequiredScopes: []string{"events:read"},
 		Logger:         logger,
 	})
-	apiKeyRL := middleware.APIKeyRateLimit(rps, burst, opts.ShutdownCh)
-	v1.POST("/events", eventsWrite, apiKeyRL, handler.SubmitEventHandler)
-	v1.GET("/events/:id", eventsRead, apiKeyRL, handler.GetEventHandler)
+	v1.POST("/events", eventsWrite, handler.SubmitEventHandler)
+	v1.GET("/events/:id", eventsRead, handler.GetEventHandler)
 
-	// Admin routes — require API key with "admin" scope + API-key-based rate limiting.
+	// Admin routes — require API key with "admin" scope.
 	admin := router.Group("/admin")
 	admin.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
@@ -131,9 +121,9 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 		RequiredScopes: []string{"admin"},
 		Logger:         logger,
 	})
-	admin.POST("/api-keys", adminAuth, apiKeyRL, adminHandler.CreateAPIKeyHandler)
-	admin.GET("/api-keys", adminAuth, apiKeyRL, adminHandler.ListAPIKeysHandler)
-	admin.DELETE("/api-keys/:id", adminAuth, apiKeyRL, adminHandler.RevokeAPIKeyHandler)
+	admin.POST("/api-keys", adminAuth, adminHandler.CreateAPIKeyHandler)
+	admin.GET("/api-keys", adminAuth, adminHandler.ListAPIKeysHandler)
+	admin.DELETE("/api-keys/:id", adminAuth, adminHandler.RevokeAPIKeyHandler)
 
 	return router
 }
