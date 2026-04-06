@@ -21,6 +21,22 @@ import (
 	"go.uber.org/zap"
 )
 
+//	@title						Event Notification Service API
+//	@version					1.0
+//	@description				A scalable event notification service supporting multiple channels (email, WhatsApp). Events are submitted with notifications and processed asynchronously.
+//	@termsOfService				http://swagger.io/terms/
+//	@contact.name				API Support
+//	@contact.email				support@example.com
+//	@license.name				Apache 2.0
+//	@license.url				http://www.apache.org/licenses/LICENSE-2.0.html
+//	@host						localhost:8080
+//	@BasePath					/
+//	@schemes					http https
+//	@securityDefinitions.apikey	ApiKeyAuth
+//	@in							header
+//	@name						X-API-Key
+//	@description				API Key authentication. Use format: "your-api-key-here"
+
 // Version and Commit are injected at build time via -ldflags.
 // Example: go build -ldflags="-X main.Version=1.0.0 -X main.Commit=abc1234"
 var (
