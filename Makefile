@@ -2,7 +2,7 @@
 
 GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint
 GOCACHE ?= /tmp/go-build
-GOTOOLCHAIN ?= go1.25.8
+GOTOOLCHAIN ?= go1.25.9
 GOROOT ?= $(shell go env GOROOT)
 GOMODCACHE ?= $(shell $(GOROOT)/bin/go env GOMODCACHE)
 GOPATH ?= $(shell $(GOROOT)/bin/go env GOPATH)
