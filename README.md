@@ -8,6 +8,20 @@ A production-ready, high-performance event notification service built in Go with
 
 ---
 
+## 📢 Recent Updates
+
+### March 2026
+
+- **🔍 OpenTelemetry Tracing**: Added distributed tracing with automatic HTTP instrumentation, use case spans, and infrastructure-level tracing. Exporters support stdout (dev) and OTLP (prod via Tempo/Jaeger).
+- **🎯 Simplified Architecture**: Removed application-level rate limiting (commit `318e50f`) in favor of infrastructure-level rate limiting at load balancers/API gateways.
+- **🧪 Increased Test Coverage**: Unit test coverage raised from 34% to **≥80%** with comprehensive tests across domain, application, and infrastructure layers.
+- **🔧 Centralized Error Handling**: Refactored HTTP error responses into a centralized `ErrorHandler` middleware for consistent error formatting.
+- **📊 Observability Stack**: Added full Docker Compose observability stack with Grafana + Prometheus + Tempo + Loki for metrics, traces, and logs correlation.
+
+See the [full changelog](https://github.com/rachelJG/event-notification-service/commits/main) for details.
+
+---
+
 ## 🎯 Overview
 
 This service implements a **complete event-driven notification pipeline** with:
@@ -18,7 +32,7 @@ This service implements a **complete event-driven notification pipeline** with:
 - **Fan-out notifications**: A single event can generate multiple notifications (e.g., one invoice event per condominium fans out to N resident emails)
 - **Production hardening**: rate limiting, API Key authentication, CORS, security headers, graceful shutdown
 - **Client tracking**: Automatic capture of client metadata for auditing and analytics
-- **Full observability**: Prometheus metrics, structured logging, health checks
+- **Full observability**: Prometheus metrics, structured logging (Zap), OpenTelemetry distributed tracing, health checks
 - **Clean architecture**: Hexagonal/Ports & Adapters pattern with zero domain dependencies
 
 ### Key Design Decisions
@@ -134,6 +148,7 @@ event-notification-service/
 │   │   ├── postgres/                  # Repository implementations, migrations
 │   │   ├── email/                     # SMTP adapter, email templates
 │   │   ├── whatsapp/                  # WhatsApp API sender
+│   │   ├── telemetry/                 # OpenTelemetry tracing initialization
 │   │   └── logger/                    # Zap logger factory
 │   ├── pkg/
 │   │   └── apperror/                  # Typed error taxonomy
@@ -143,8 +158,13 @@ event-notification-service/
 ├── docs/
 │   └── api.apib                       # API Blueprint documentation
 ├── .github/workflows/
-│   ├── ci.yml                         # Lint, test, coverage (34%)
+│   ├── ci.yml                         # Lint, test, coverage (≥80%)
 │   └── deploy.yml                     # Migrations → Build → Deploy pipeline
+├── observability/
+│   ├── prometheus.yml                 # Prometheus scrape config
+│   ├── tempo.yml                      # Tempo OTLP receiver config
+│   ├── loki.yml                       # Loki log aggregation config
+│   └── promtail.yml                   # Promtail log collection config
 ├── docker-compose.yml                 # Local development setup
 ├── Makefile                           # Build, test, lint, migrate targets
 ├── CLAUDE.md                          # Codebase conventions for AI agents
@@ -176,9 +196,9 @@ event-notification-service/
 - 🔒 **Security**:
   - API Key authentication (SHA-256 hashed, scope-based authorization)
   - Client tracking via metadata (client_id, organization, contact)
-  - Rate limiting with `X-Forwarded-For` support
   - Security headers (HSTS, X-Content-Type-Options, X-Frame-Options)
   - Trusted proxy configuration
+  - **Note**: Rate limiting should be configured at the infrastructure level (load balancer/API gateway)
 - 🛡️ **Reliability**:
   - Graceful shutdown (configurable timeout)
   - Context-aware timeouts (DB queries, HTTP requests)
@@ -187,8 +207,10 @@ event-notification-service/
 - 📊 **Observability**:
   - Prometheus metrics (HTTP, DB pool, business metrics)
   - Structured logging (Zap) with request IDs and client_id tracking
+  - **OpenTelemetry distributed tracing** with automatic HTTP instrumentation
   - API Key audit logging (auth success/failure with IP and client_id)
   - Health check endpoints (`/health/live`, `/health/ready` with DB stats)
+  - Integrated observability stack (Grafana + Prometheus + Tempo + Loki)
 
 ### Metrics Exposed
 
@@ -311,6 +333,28 @@ event-notification-service/
 
 ## 📖 API Documentation
 
+### Interactive Documentation (Swagger UI)
+
+The API provides **interactive Swagger documentation** available when the server is running:
+
+🔗 **[http://localhost:8080/swagger/index.html](http://localhost:8080/swagger/index.html)**
+
+The Swagger UI allows you to:
+- Explore all available endpoints with detailed descriptions
+- View request/response schemas with examples
+- Test API calls directly from your browser
+- See authentication requirements for each endpoint
+
+To regenerate the Swagger docs after making changes to handlers or DTOs:
+```bash
+make docs
+```
+
+This generates:
+- `docs/swagger.json` - OpenAPI 3.0 specification (JSON format)
+- `docs/swagger.yaml` - OpenAPI 3.0 specification (YAML format)
+- `docs/docs.go` - Embedded Go documentation
+
 ### Endpoints
 
 #### **POST /api/v1/events**
@@ -341,9 +385,9 @@ Submit a new event for processing. The `client_id` from your API key's metadata 
   Headers: `Location: /api/v1/events/{id}`
 
 - `400 Bad Request` — Invalid input (missing idempotency key, bad JSON, validation error)
-- `401 Unauthorized` — Missing or invalid JWT
+- `401 Unauthorized` — Missing or invalid API key
 - `409 Conflict` — Duplicate event (idempotent: returns original ID)
-- `429 Too Many Requests` — Rate limit exceeded (includes `Retry-After` header)
+- `429 Too Many Requests` — Rate limit exceeded (configure at load balancer level)
 
 **Example**:
 ```bash
@@ -524,8 +568,6 @@ All configuration is via **environment variables**. See [.env.example](.env.exam
 | `APP_ENV` | `development` | Environment (`production` enforces stricter validation) |
 | `LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
 | `MAX_BODY_BYTES` | `1048576` | Max request body size (1MB) |
-| `RATE_LIMIT_RPS` | `10` | Requests per second per IP |
-| `RATE_LIMIT_BURST` | `20` | Burst allowance |
 | `READ_TIMEOUT` | `15` | HTTP read timeout (seconds) |
 | `WRITE_TIMEOUT` | `15` | HTTP write timeout (seconds) |
 | `SHUTDOWN_TIMEOUT` | `30` | Graceful shutdown timeout (seconds) |
@@ -592,6 +634,18 @@ See [Admin Endpoints](#admin-endpoints) for details on creating API keys.
 
 When `WHATSAPP_API_URL` is not set, the worker starts without WhatsApp support. Any pending WhatsApp notifications will fail with a descriptive error and follow the normal retry/failure cycle.
 
+### OpenTelemetry (Tracing)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OTEL_SERVICE_NAME` | `event-notification-service` | Service name in traces |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP HTTP endpoint (e.g. `localhost:4318`). Empty = stdout in dev, no-op in prod |
+
+**Behavior by environment**:
+- **Development** (`APP_ENV=development`): Traces exported to stdout as pretty-printed JSON
+- **Production** with `OTEL_EXPORTER_OTLP_ENDPOINT` set: Traces exported to OTLP collector (Jaeger, Tempo, etc.)
+- **Production** without `OTEL_EXPORTER_OTLP_ENDPOINT`: Tracing is no-op (minimal overhead)
+
 ---
 
 ## 🧪 Testing
@@ -602,12 +656,12 @@ Run all unit tests (no database required):
 
 ```bash
 make test
-# Or: go test -race -cover ./...
+# Or: go test -race -cover ./internal/...
 ```
 
-**Coverage**: 34.4% (threshold: 34%)
+**Coverage**: **≥ 80%** (enforced by CI)
 
-Coverage is conservative because `cmd/`, `config/`, and `logger/` packages (composition roots and constructors) have no unit tests. Core business logic has comprehensive coverage.
+Core business logic (domain, application, infrastructure) has comprehensive test coverage. The `cmd/` packages (composition roots) are excluded from coverage calculations as they primarily wire dependencies.
 
 ### Integration Tests
 
@@ -635,6 +689,42 @@ make lint
 ```
 
 Configuration: [.golangci.yml](.golangci.yml)
+
+### Race Detector
+
+```bash
+make test-race
+# Or: go test -race ./internal/...
+```
+
+Useful when validating middleware, async updates, and request-scoped concurrency.
+
+### Benchmarks
+
+```bash
+make bench
+make bench-validate-event
+```
+
+The first command runs all benchmarks under `internal/`. The second focuses on the event validation hot path and reports allocations with `-benchmem`.
+
+### pprof
+
+Generate CPU and memory profiles for the validation benchmark:
+
+```bash
+make pprof-validate-event-cpu
+make pprof-validate-event-mem
+```
+
+Inspect the generated profiles:
+
+```bash
+go tool pprof -http=:0 ./internal/application/validation.test profiles/validate_event_cpu.prof
+go tool pprof -http=:0 ./internal/application/validation.test profiles/validate_event_mem.prof
+```
+
+Profiles are written to `profiles/` and are useful for confirming allocation changes before and after optimization work.
 
 ---
 
@@ -681,8 +771,8 @@ kubectl rollout status deployment/event-service-worker
 GitHub Actions workflows:
 
 #### `.github/workflows/ci.yml` (on every push/PR)
-1. **Lint**: `golangci-lint`
-2. **Test**: Unit tests with race detector, coverage ≥ 34%
+1. **Lint**: `golangci-lint` (v2 config)
+2. **Test**: Unit tests with race detector, **coverage ≥ 80%** (enforced threshold)
 3. **Build**: Compile both `bin/event-service` (API) and `bin/worker`
 
 #### `.github/workflows/deploy.yml` (on push to main)
@@ -704,6 +794,11 @@ GitHub Actions workflows:
 make build                # Build API binary (version injection)
 make build-worker         # Build worker binary
 make test                 # Run unit tests
+make test-race            # Run unit tests with the race detector
+make bench                # Run all internal benchmarks with allocation stats
+make bench-validate-event # Benchmark the validation hot path only
+make pprof-validate-event-cpu # Generate CPU profile for ValidateEvent benchmark
+make pprof-validate-event-mem # Generate memory profile for ValidateEvent benchmark
 make test-integration     # Run integration tests (requires Postgres)
 make lint                 # Run golangci-lint
 make migrate              # Apply DB migrations
@@ -783,17 +878,23 @@ Configuration files are in `observability/`:
 
 ### OpenTelemetry Tracing
 
-Distributed tracing is implemented using OpenTelemetry SDK with OTLP/HTTP export:
+Distributed tracing is implemented using **OpenTelemetry SDK** with OTLP/HTTP export:
 
 | Env Var | Default | Description |
 |---|---|---|
 | `OTEL_SERVICE_NAME` | `event-notification-service` | Service name in traces |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP HTTP endpoint (e.g. `localhost:4318`). Empty disables export |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP HTTP endpoint (e.g. `localhost:4318`). Empty = stdout (dev) or no-op (prod) |
 
-Instrumented components:
-- **HTTP middleware** (`otelgin`) — automatic spans for every request
-- **Use cases** — `SubmitEvent`, `ProcessEvents`, `DeliverNotifications` with event/notification attributes
-- **Infrastructure** — SMTP sender, WhatsApp sender, all DB repository operations
+**What's instrumented**:
+- ✅ **HTTP requests** — Automatic spans via `otelgin` middleware (method, path, status, latency)
+- ✅ **Use cases** — `SubmitEvent`, `ProcessEvents`, `DeliverNotifications` with business attributes (event_type, notification_id, etc.)
+- ✅ **Infrastructure** — Database operations (Create, GetByID), SMTP sender, WhatsApp sender
+- ✅ **Context propagation** — TraceContext + Baggage via W3C standard headers
+
+**Viewing traces**:
+- **Development**: Traces printed to stdout as JSON (when `APP_ENV=development`)
+- **Production**: Export to Grafana Tempo via OTLP (see `docker-compose.yml`)
+- **Correlation**: Each trace includes `request_id` for log correlation
 
 ### Prometheus Integration
 
@@ -837,18 +938,20 @@ scrape_configs:
 
 ### Structured Logging
 
-All logs are JSON-formatted (Zap) with consistent fields:
+All logs are **JSON-formatted** (Zap) with consistent fields. Logs and traces are **correlated** via `request_id` and OpenTelemetry trace IDs:
 
 ```json
 {
   "level": "info",
-  "ts": "2026-02-24T10:30:00.123Z",
+  "ts": "2026-03-31T10:30:00.123Z",
   "caller": "http/handler.go:45",
   "msg": "event submitted",
   "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "trace_id": "abc123def456...",
+  "span_id": "789xyz...",
   "event_id": "123e4567-e89b-12d3-a456-426614174000",
   "event_type": "UserRegistered",
-  "user_id": "12345"
+  "client_id": "acme-corp"
 }
 ```
 
@@ -856,7 +959,7 @@ All logs are JSON-formatted (Zap) with consistent fields:
 ```json
 {
   "level": "info",
-  "ts": "2026-02-24T10:30:00.123Z",
+  "ts": "2026-03-31T10:30:00.123Z",
   "msg": "auth success",
   "event": "auth",
   "api_key_name": "Acme Corp - Production",
@@ -865,6 +968,8 @@ All logs are JSON-formatted (Zap) with consistent fields:
   "request_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
+
+**Log aggregation**: Logs are collected by Promtail and shipped to Loki (see `docker-compose.yml`). In Grafana, you can jump from a log entry to its corresponding trace using the trace_id field.
 
 ---
 
@@ -880,9 +985,9 @@ All logs are JSON-formatted (Zap) with consistent fields:
 
 ### Rate Limiting
 
-- Per-IP rate limiting with `X-Forwarded-For` support
-- Configurable via `RATE_LIMIT_RPS` and `RATE_LIMIT_BURST`
-- Returns `429 Too Many Requests` with `Retry-After` header
+- **Infrastructure-level**: Rate limiting should be configured at your load balancer or API gateway (e.g., NGINX, AWS ALB, CloudFlare)
+- Application-level rate limiting was removed in commit `318e50f` to reduce complexity and align with modern best practices
+- The service still returns `429 Too Many Requests` responses when upstream rate limits are hit
 
 ### Security Headers
 
@@ -906,8 +1011,10 @@ Before deploying to production:
 - [ ] Set up Prometheus scraping and alerting
 - [ ] Configure SMTP credentials for email delivery
 - [ ] Configure WhatsApp API credentials (`WHATSAPP_API_URL`, `WHATSAPP_API_TOKEN`) if using WhatsApp notifications
+- [ ] Set up OpenTelemetry collector endpoint (`OTEL_EXPORTER_OTLP_ENDPOINT`) for distributed tracing
 - [ ] Apply database migrations (up to `007_add_whatsapp_channel`)
 - [ ] Create API keys for all clients with proper metadata
+- [ ] Configure infrastructure-level rate limiting at load balancer/API gateway
 - [ ] Test graceful shutdown behavior under load
 
 ---

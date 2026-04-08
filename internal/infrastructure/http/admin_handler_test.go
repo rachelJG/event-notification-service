@@ -190,7 +190,6 @@ func TestCreateAPIKeyHandlerRepoError(t *testing.T) {
 	}
 }
 
-
 func TestListAPIKeysHandlerSuccess(t *testing.T) {
 	router, _ := adminTestRouter()
 
@@ -205,11 +204,11 @@ func TestListAPIKeysHandlerSuccess(t *testing.T) {
 		t.Fatalf("expected 200, got %d; body: %s", resp.Code, resp.Body.String())
 	}
 
-	var result map[string][]apiKeyListItem
+	var result listAPIKeysResponse
 	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
-	if len(result["keys"]) == 0 {
+	if len(result.Keys) == 0 {
 		t.Fatal("expected at least one key in list")
 	}
 }
@@ -233,13 +232,12 @@ func TestListAPIKeysHandlerRepoError(t *testing.T) {
 	}
 }
 
-
 func TestRevokeAPIKeyHandlerSuccess(t *testing.T) {
 	router, repo := adminTestRouter()
 
 	// Create a key to revoke
 	key := entities.APIKey{
-		ID:       "revoke-me",
+		ID:       "550e8400-e29b-41d4-a716-446655440000",
 		KeyHash:  middleware.HashAPIKey("some-other-key"),
 		Name:     "to-revoke",
 		Scopes:   []string{"events:read"},
@@ -247,7 +245,7 @@ func TestRevokeAPIKeyHandlerSuccess(t *testing.T) {
 	}
 	_ = repo.Create(context.Background(), key)
 
-	req := httptest.NewRequest(http.MethodDelete, "/admin/api-keys/revoke-me", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/admin/api-keys/550e8400-e29b-41d4-a716-446655440000", nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
@@ -258,19 +256,34 @@ func TestRevokeAPIKeyHandlerSuccess(t *testing.T) {
 		t.Fatalf("expected 200, got %d; body: %s", resp.Code, resp.Body.String())
 	}
 
-	var result map[string]string
+	var result revokeAPIKeyResponse
 	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
-	if result["id"] != "revoke-me" {
-		t.Errorf("expected id revoke-me, got %q", result["id"])
+	if result.ID != "550e8400-e29b-41d4-a716-446655440000" {
+		t.Errorf("expected id 550e8400-e29b-41d4-a716-446655440000, got %q", result.ID)
+	}
+}
+
+func TestRevokeAPIKeyHandlerInvalidUUID(t *testing.T) {
+	router, _ := adminTestRouter()
+
+	req := httptest.NewRequest(http.MethodDelete, "/admin/api-keys/not-a-uuid", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", testRawAPIKey)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d; body: %s", resp.Code, resp.Body.String())
 	}
 }
 
 func TestRevokeAPIKeyHandlerNotFound(t *testing.T) {
 	router, _ := adminTestRouter()
 
-	req := httptest.NewRequest(http.MethodDelete, "/admin/api-keys/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/admin/api-keys/123e4567-e89b-12d3-a456-426614174000", nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", testRawAPIKey)
 	resp := httptest.NewRecorder()
@@ -282,7 +295,6 @@ func TestRevokeAPIKeyHandlerNotFound(t *testing.T) {
 	}
 }
 
-
 func TestAdminEndpointsRequireAuth(t *testing.T) {
 	router, _ := adminTestRouter()
 
@@ -292,7 +304,7 @@ func TestAdminEndpointsRequireAuth(t *testing.T) {
 	}{
 		{http.MethodPost, "/admin/api-keys"},
 		{http.MethodGet, "/admin/api-keys"},
-		{http.MethodDelete, "/admin/api-keys/some-id"},
+		{http.MethodDelete, "/admin/api-keys/123e4567-e89b-12d3-a456-426614174000"},
 	}
 
 	for _, ep := range endpoints {

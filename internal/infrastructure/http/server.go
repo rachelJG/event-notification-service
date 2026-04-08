@@ -10,8 +10,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	domainports "github.com/rachelJG/event-notification-service/internal/domain/ports"
 	"github.com/rachelJG/event-notification-service/internal/infrastructure/http/middleware"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
+
+	_ "github.com/rachelJG/event-notification-service/docs" // swagger docs
 )
 
 func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker, apiKeyRepo domainports.APIKeyRepository, logger *zap.Logger, opts RouterOptions) *gin.Engine {
@@ -89,6 +93,9 @@ func NewRouter(handler Handler, adminHandler AdminHandler, health HealthChecker,
 		})
 	})
 	publicGroup.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// Swagger API documentation
+	publicGroup.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Authenticated event routes.
 	v1 := router.Group("/api/v1")

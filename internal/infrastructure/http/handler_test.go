@@ -213,6 +213,30 @@ func TestSubmitEventHandlerUseCaseError(t *testing.T) {
 	}
 }
 
+func TestSubmitEventHandlerMissingEventType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mock := &mockEventService{submitReturnID: "evt-1"}
+	handler := Handler{EventService: mock}
+	router := testRouter(handler, nil)
+
+	reqBody := `{"payload":{"user_id":"1"},"notifications":[{"channel":"email","subject":"Welcome","body":"Hello","recipients":["a@b.com"]}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "6b9a1f90-6b71-4f0a-9a3d-4b72e4d9e91a")
+	req.Header.Set("X-API-Key", testRawAPIKey)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.Code)
+	}
+	if mock.submitCalled {
+		t.Fatalf("expected use case not to be called")
+	}
+	assertErrorCode(t, resp, "invalid_argument")
+}
+
 func TestSubmitEventUnauthorizedWithoutAuthHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
@@ -498,8 +522,6 @@ func TestNewRouterDefaultBodyLimit(t *testing.T) {
 	}
 }
 
-
-
 func TestEventsSubmittedMetricSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockEventService{submitReturnID: "evt-1"}
@@ -546,7 +568,6 @@ func TestHTTPErrorsMetricIncremented(t *testing.T) {
 		t.Fatalf("expected http_errors_total{invalid_argument} to increment by 1, got %v", after-before)
 	}
 }
-
 
 func TestSubmitEventHandlerInvalidJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -630,7 +651,6 @@ func TestNewRouterInvalidTrustedProxiesNilLogger(t *testing.T) {
 		t.Fatal("expected non-nil router even with nil logger")
 	}
 }
-
 
 func TestEventsSubmittedMetricError(t *testing.T) {
 	gin.SetMode(gin.TestMode)

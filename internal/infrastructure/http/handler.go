@@ -19,6 +19,23 @@ type Handler struct {
 
 const idempotencyHeader = "Idempotency-Key"
 
+// SubmitEventHandler godoc
+//
+//	@Summary		Submit a new event
+//	@Description	Accepts an event with notifications to be processed asynchronously. Idempotent operation.
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			X-API-Key			header		string					true	"API Key with events:write scope"
+//	@Param			Idempotency-Key		header		string					true	"Unique UUID for idempotent submission"
+//	@Param			request				body		dto.SubmitEventRequest	true	"Event details"
+//	@Success		202					{object}	dto.SubmitEventResponse
+//	@Header			202					{string}	Location	"/api/v1/events/{id}"
+//	@Failure		400					{object}	map[string]interface{}	"Invalid request (bad JSON, invalid idempotency key, validation error)"
+//	@Failure		401					{object}	map[string]interface{}	"Missing or invalid API key"
+//	@Failure		409					{object}	map[string]interface{}	"Duplicate event (same idempotency key + type, returns original ID)"
+//	@Failure		429					{object}	map[string]interface{}	"Rate limit exceeded"
+//	@Router			/api/v1/events [post]
 func (h Handler) SubmitEventHandler(c *gin.Context) {
 	if !isIdempotencyKeyValid(c.GetHeader(idempotencyHeader)) {
 		_ = c.Error(apperror.InvalidArgument("missing or invalid Idempotency-Key", nil))
@@ -70,6 +87,20 @@ func isIdempotencyKeyValid(key string) bool {
 	return err == nil
 }
 
+// GetEventHandler godoc
+//
+//	@Summary		Retrieve an event by ID
+//	@Description	Returns the details of a previously submitted event
+//	@Tags			events
+//	@Accept			json
+//	@Produce		json
+//	@Param			X-API-Key	header		string	true	"API Key with events:read scope"
+//	@Param			id			path		string	true	"Event ID (UUID)"
+//	@Success		200			{object}	dto.GetEventResponse
+//	@Failure		400			{object}	map[string]interface{}	"Invalid UUID format"
+//	@Failure		401			{object}	map[string]interface{}	"Missing or invalid API key"
+//	@Failure		404			{object}	map[string]interface{}	"Event not found"
+//	@Router			/api/v1/events/{id} [get]
 func (h Handler) GetEventHandler(c *gin.Context) {
 	id := c.Param("id")
 	if _, err := uuid.Parse(id); err != nil {

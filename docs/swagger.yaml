@@ -1,0 +1,425 @@
+basePath: /
+definitions:
+  github_com_rachelJG_event-notification-service_internal_infrastructure_http_dto.GetEventResponse:
+    properties:
+      client_id:
+        description: Client identifier from API key metadata
+        example: acme-corp
+        type: string
+      created_at:
+        description: When the event was created in the system
+        example: "2024-01-15T10:30:01Z"
+        type: string
+      id:
+        description: Unique event identifier (UUID)
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      occurred_at:
+        description: When the event occurred
+        example: "2024-01-15T10:30:00Z"
+        type: string
+      payload:
+        additionalProperties:
+          type: string
+        description: Event-specific data
+        type: object
+      type:
+        description: Type of event
+        example: invoice.issued
+        type: string
+    type: object
+  github_com_rachelJG_event-notification-service_internal_infrastructure_http_dto.NotificationDTO:
+    properties:
+      body:
+        description: Message body
+        example: Your invoice is ready
+        type: string
+      channel:
+        description: Notification channel (email, whatsapp)
+        example: email
+        type: string
+      from:
+        description: Sender address (required for email)
+        example: noreply@example.com
+        type: string
+      recipients:
+        description: List of recipient addresses
+        example:
+        - user@example.com
+        items:
+          type: string
+        type: array
+      subject:
+        description: Subject line (used for email)
+        example: 'Invoice #12345'
+        type: string
+    required:
+    - body
+    - channel
+    - recipients
+    type: object
+  github_com_rachelJG_event-notification-service_internal_infrastructure_http_dto.SubmitEventRequest:
+    properties:
+      event_type:
+        description: Type of event (e.g., invoice.issued, payment.received)
+        example: invoice.issued
+        type: string
+      notifications:
+        description: List of notifications to send for this event
+        items:
+          $ref: '#/definitions/github_com_rachelJG_event-notification-service_internal_infrastructure_http_dto.NotificationDTO'
+        type: array
+      payload:
+        additionalProperties:
+          type: string
+        description: Event-specific data (varies by event_type)
+        type: object
+    required:
+    - event_type
+    - notifications
+    type: object
+  github_com_rachelJG_event-notification-service_internal_infrastructure_http_dto.SubmitEventResponse:
+    properties:
+      id:
+        description: Unique event identifier (UUID)
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+    type: object
+  internal_infrastructure_http.apiKeyListItem:
+    properties:
+      created_at:
+        description: When the key was created
+        example: "2024-01-15T10:30:00Z"
+        type: string
+      id:
+        description: API key ID (UUID)
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      is_active:
+        description: Whether the key is active
+        example: true
+        type: boolean
+      last_used_at:
+        description: When the key was last used
+        example: "2024-01-15T12:00:00Z"
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        description: Key metadata
+        example:
+          client_id: acme-corp
+        type: object
+      name:
+        description: Human-readable name
+        example: Acme Corp - Production
+        type: string
+      scopes:
+        description: List of scopes
+        example:
+        - events:write
+        - events:read
+        items:
+          type: string
+        type: array
+    type: object
+  internal_infrastructure_http.createAPIKeyRequest:
+    properties:
+      metadata:
+        additionalProperties:
+          type: string
+        description: Key metadata (client_id is required)
+        example:
+          client_id: acme-corp
+          organization: Acme Corp
+        type: object
+      name:
+        description: Human-readable name for the API key
+        example: Acme Corp - Production
+        type: string
+      scopes:
+        description: List of scopes (events:write, events:read, admin)
+        example:
+        - events:write
+        - events:read
+        items:
+          type: string
+        type: array
+    required:
+    - name
+    - scopes
+    type: object
+  internal_infrastructure_http.createAPIKeyResponse:
+    properties:
+      id:
+        description: API key ID (UUID)
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      key:
+        description: Raw API key (returned only on creation)
+        example: abc123...xyz
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        description: Key metadata
+        example:
+          client_id: acme-corp
+        type: object
+      name:
+        description: Human-readable name
+        example: Acme Corp - Production
+        type: string
+      scopes:
+        description: List of scopes
+        example:
+        - events:write
+        - events:read
+        items:
+          type: string
+        type: array
+    type: object
+  internal_infrastructure_http.listAPIKeysResponse:
+    properties:
+      keys:
+        items:
+          $ref: '#/definitions/internal_infrastructure_http.apiKeyListItem'
+        type: array
+    type: object
+  internal_infrastructure_http.revokeAPIKeyResponse:
+    properties:
+      id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      message:
+        example: api key revoked
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+  description: A scalable event notification service supporting multiple channels
+    (email, WhatsApp). Events are submitted with notifications and processed asynchronously.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Event Notification Service API
+  version: "1.0"
+paths:
+  /admin/api-keys:
+    get:
+      consumes:
+      - application/json
+      description: Returns all API keys with their metadata (excluding raw keys)
+      parameters:
+      - description: API Key with admin scope
+        in: header
+        name: X-API-Key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_infrastructure_http.listAPIKeysResponse'
+        "401":
+          description: Missing or invalid API key
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List all API keys
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Generates a new API key with specified scopes and metadata. Returns
+        the raw key only once.
+      parameters:
+      - description: API Key with admin scope
+        in: header
+        name: X-API-Key
+        required: true
+        type: string
+      - description: API key details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_infrastructure_http.createAPIKeyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_infrastructure_http.createAPIKeyResponse'
+        "400":
+          description: Invalid request (bad JSON, missing client_id in metadata)
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Missing or invalid API key
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Create a new API key
+      tags:
+      - admin
+  /admin/api-keys/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deactivates an API key by setting is_active to false
+      parameters:
+      - description: API Key with admin scope
+        in: header
+        name: X-API-Key
+        required: true
+        type: string
+      - description: API Key ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_infrastructure_http.revokeAPIKeyResponse'
+        "400":
+          description: Invalid API key ID format
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Missing or invalid API key
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: API key not found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Revoke an API key
+      tags:
+      - admin
+  /api/v1/events:
+    post:
+      consumes:
+      - application/json
+      description: Accepts an event with notifications to be processed asynchronously.
+        Idempotent operation.
+      parameters:
+      - description: API Key with events:write scope
+        in: header
+        name: X-API-Key
+        required: true
+        type: string
+      - description: Unique UUID for idempotent submission
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Event details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rachelJG_event-notification-service_internal_infrastructure_http_dto.SubmitEventRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          headers:
+            Location:
+              description: /api/v1/events/{id}
+              type: string
+          schema:
+            $ref: '#/definitions/github_com_rachelJG_event-notification-service_internal_infrastructure_http_dto.SubmitEventResponse'
+        "400":
+          description: Invalid request (bad JSON, invalid idempotency key, validation
+            error)
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Missing or invalid API key
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Duplicate event (same idempotency key + type, returns original
+            ID)
+          schema:
+            additionalProperties: true
+            type: object
+        "429":
+          description: Rate limit exceeded
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Submit a new event
+      tags:
+      - events
+  /api/v1/events/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Returns the details of a previously submitted event
+      parameters:
+      - description: API Key with events:read scope
+        in: header
+        name: X-API-Key
+        required: true
+        type: string
+      - description: Event ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_rachelJG_event-notification-service_internal_infrastructure_http_dto.GetEventResponse'
+        "400":
+          description: Invalid UUID format
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Missing or invalid API key
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Event not found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Retrieve an event by ID
+      tags:
+      - events
+schemes:
+- http
+- https
+securityDefinitions:
+  ApiKeyAuth:
+    description: 'API Key authentication. Use format: "your-api-key-here"'
+    in: header
+    name: X-API-Key
+    type: apiKey
+swagger: "2.0"

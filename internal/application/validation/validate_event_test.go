@@ -223,3 +223,28 @@ func TestValidateEvent_TooManyRecipients(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum of 500")
 }
+
+func BenchmarkValidateEvent(b *testing.B) {
+	payload := []byte(`{"user_id":"123","email":"user@example.com","name":"Test User"}`)
+	notifications := []NotificationSpec{
+		{
+			Channel:    "email",
+			From:       "noreply@example.com",
+			Subject:    "Welcome",
+			Body:       "<p>Hello</p>",
+			Recipients: []string{"user@example.com"},
+		},
+		{
+			Channel:    "whatsapp",
+			Body:       "Welcome to the service",
+			Recipients: []string{"group-123"},
+		},
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := ValidateEvent("UserRegistered", payload, notifications); err != nil {
+			b.Fatalf("ValidateEvent() error = %v", err)
+		}
+	}
+}

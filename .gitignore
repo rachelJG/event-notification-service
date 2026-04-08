@@ -40,3 +40,5 @@ deploy/k8s/secret.yaml
 # Claude Code
 .claude/
 skills-lock.json
+profiles/
+

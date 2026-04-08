@@ -11,7 +11,7 @@ make test-integration    # Run integration tests (needs Postgres, loads .env)
 make lint                # Run golangci-lint
 make migrate             # Apply DB migrations (loads .env)
 make migrate-down        # Roll back last migration (loads .env)
-make docs                # Render API Blueprint docs to HTML
+make docs                # Generate Swagger API documentation
 go run ./cmd/api         # Start the API server
 docker-compose up -d     # Start app + Postgres locally
 ```
@@ -154,6 +154,9 @@ Requires API key with `admin` scope. Revokes an API key (sets `is_active` to fal
 ### `GET /metrics`
 Prometheus metrics endpoint (no auth).
 
+### `GET /swagger/index.html`
+Swagger UI for interactive API documentation (no auth). After starting the API server, visit `http://localhost:8080/swagger/index.html` to explore and test all endpoints interactively.
+
 ## API Key Authentication
 
 The primary authentication mechanism is **long-lived API Keys** for service-to-service communication. API keys are managed via the `/admin/api-keys` endpoints.
@@ -173,6 +176,19 @@ The primary authentication mechanism is **long-lived API Keys** for service-to-s
 ### JWT Authentication (legacy)
 
 JWT middleware (`middleware.JWTAuth`) is still present in the codebase but no longer used in the router. It was replaced by API Key auth for service-to-service communication.
+
+## API Documentation
+
+The API is documented using **Swagger (OpenAPI 3.0)** annotations in the code:
+
+- Annotations are added to handler functions in `internal/infrastructure/http/handler.go` and `internal/infrastructure/http/admin_handler.go`
+- DTO types in `internal/infrastructure/http/dto/` include field-level documentation
+- Main API metadata (title, version, contact, license) is defined in `cmd/api/main.go`
+- Run `make docs` to generate Swagger files (`docs/swagger.json`, `docs/swagger.yaml`, `docs/docs.go`)
+- Swagger UI is available at `GET /swagger/index.html` when the server is running
+- The generated `docs/docs.go` is imported in `server.go` to embed the documentation
+
+To update the documentation after changing handlers or DTOs, run `make docs` and restart the server.
 
 ## TLS
 
